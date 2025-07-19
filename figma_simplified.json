@@ -1,0 +1,1149 @@
+{
+  "id": "37:200",
+  "type": "FRAME",
+  "name": "edit profile",
+  "interactions": [],
+  "absoluteBoundingBox": {
+    "x": -71.0,
+    "y": 1823.0,
+    "width": 390.0,
+    "height": 844.0
+  },
+  "strokes": [],
+  "fills": [
+    {
+      "blendMode": "NORMAL",
+      "type": "SOLID",
+      "color": {
+        "r": 1.0,
+        "g": 1.0,
+        "b": 1.0,
+        "a": 1.0
+      }
+    }
+  ],
+  "strokeWeight": 1.0,
+  "children": [
+    {
+      "id": "37:282",
+      "characters": "Cancel",
+      "type": "TEXT",
+      "name": "Cancel",
+      "interactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "36:36",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "SLIDE_OUT",
+                "direction": "LEFT",
+                "matchLayers": false,
+                "easing": {
+                  "type": "EASE_OUT"
+                },
+                "duration": 0.30000001192092896
+              },
+              "resetVideoPosition": false,
+              "preserveScrollPosition": false
+            }
+          ]
+        }
+      ],
+      "absoluteBoundingBox": {
+        "x": -51.0,
+        "y": 1879.0,
+        "width": 48.0,
+        "height": 17.0
+      },
+      "strokes": [],
+      "fills": [
+        {
+          "blendMode": "NORMAL",
+          "type": "SOLID",
+          "color": {
+            "r": 0.0,
+            "g": 0.5647059082984924,
+            "b": 0.250980406999588,
+            "a": 1.0
+          }
+        }
+      ],
+      "strokeWeight": 1.0,
+      "style": {
+        "fontFamily": "Montserrat",
+        "fontPostScriptName": "MontserratRoman-Regular",
+        "fontStyle": "Regular",
+        "fontWeight": 400,
+        "textAutoResize": "WIDTH_AND_HEIGHT",
+        "fontSize": 14.0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP",
+        "letterSpacing": 0.0,
+        "lineHeightPx": 17.06599998474121,
+        "lineHeightPercent": 100.0,
+        "lineHeightUnit": "INTRINSIC_%"
+      }
+    },
+    {
+      "id": "37:203",
+      "type": "FRAME",
+      "name": "Dark 1",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -71.0,
+        "y": 1828.0,
+        "width": 403.0,
+        "height": 44.0
+      },
+      "strokes": [],
+      "fills": [
+        {
+          "blendMode": "NORMAL",
+          "visible": false,
+          "type": "SOLID",
+          "color": {
+            "r": 1.0,
+            "g": 1.0,
+            "b": 1.0,
+            "a": 1.0
+          }
+        }
+      ],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "id": "37:204",
+          "type": "GROUP",
+          "name": "Bars-/-Status-Bar-/-iPhone-/-Dark",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -36.18046188354492,
+            "y": 1841.0,
+            "width": 351.7403564453125,
+            "height": 18.0
+          },
+          "strokes": [],
+          "fills": [],
+          "strokeWeight": 1.0,
+          "children": [
+            {
+              "id": "37:205",
+              "type": "GROUP",
+              "name": "Battery",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": 290.0208435058594,
+                "y": 1845.8333740234375,
+                "width": 25.539094924926758,
+                "height": 10.333333969116211
+              },
+              "strokes": [],
+              "fills": [],
+              "strokeWeight": 1.0,
+              "children": [
+                {
+                  "id": "37:206",
+                  "type": "VECTOR",
+                  "name": "Border",
+                  "interactions": [],
+                  "absoluteBoundingBox": {
+                    "x": 290.0208435058594,
+                    "y": 1845.8333740234375,
+                    "width": 22.507980346679688,
+                    "height": 10.333333969116211
+                  },
+                  "strokes": [
+                    {
+                      "blendMode": "NORMAL",
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.0,
+                        "g": 0.0,
+                        "b": 0.0,
+                        "a": 1.0
+                      }
+                    }
+                  ],
+                  "fills": [],
+                  "strokeWeight": 1.0
+                },
+                {
+                  "id": "37:207",
+                  "type": "VECTOR",
+                  "name": "Cap",
+                  "interactions": [],
+                  "absoluteBoundingBox": {
+                    "x": 314.1365051269531,
+                    "y": 1849.0,
+                    "width": 1.4234036207199097,
+                    "height": 4.0
+                  },
+                  "strokes": [],
+                  "fills": [
+                    {
+                      "blendMode": "NORMAL",
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.0,
+                        "g": 0.0,
+                        "b": 0.0,
+                        "a": 1.0
+                      }
+                    }
+                  ],
+                  "strokeWeight": 1.0
+                },
+                {
+                  "id": "37:208",
+                  "type": "VECTOR",
+                  "name": "Capacity",
+                  "interactions": [],
+                  "absoluteBoundingBox": {
+                    "x": 291.6285400390625,
+                    "y": 1847.3333740234375,
+                    "width": 19.292552947998047,
+                    "height": 7.333333969116211
+                  },
+                  "strokes": [],
+                  "fills": [
+                    {
+                      "blendMode": "NORMAL",
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.0,
+                        "g": 0.0,
+                        "b": 0.0,
+                        "a": 1.0
+                      }
+                    }
+                  ],
+                  "strokeWeight": 1.0
+                }
+              ]
+            },
+            {
+              "id": "37:209",
+              "type": "VECTOR",
+              "name": "Wifi",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": 267.6914978027344,
+                "y": 1845.3306884765625,
+                "width": 16.434391021728516,
+                "height": 11.0
+              },
+              "strokes": [],
+              "fills": [
+                {
+                  "blendMode": "NORMAL",
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.0,
+                    "g": 0.0,
+                    "b": 0.0,
+                    "a": 1.0
+                  }
+                }
+              ],
+              "strokeWeight": 1.0
+            },
+            {
+              "id": "37:210",
+              "type": "VECTOR",
+              "name": "Cellular-Connection",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": 244.11170959472656,
+                "y": 1845.6666259765625,
+                "width": 18.22074317932129,
+                "height": 10.666666030883789
+              },
+              "strokes": [],
+              "fills": [
+                {
+                  "blendMode": "NORMAL",
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.0,
+                    "g": 0.0,
+                    "b": 0.0,
+                    "a": 1.0
+                  }
+                }
+              ],
+              "strokeWeight": 1.0
+            },
+            {
+              "id": "37:211",
+              "type": "GROUP",
+              "name": "Bars-/-Status-Bar-/-iPhone-/-x-/-Time---Dark",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": -36.18046188354492,
+                "y": 1841.0,
+                "width": 32.15425491333008,
+                "height": 18.0
+              },
+              "strokes": [],
+              "fills": [],
+              "strokeWeight": 1.0,
+              "children": [
+                {
+                  "id": "37:212",
+                  "characters": "9:41",
+                  "type": "TEXT",
+                  "name": "Time",
+                  "interactions": [],
+                  "absoluteBoundingBox": {
+                    "x": -36.18046188354492,
+                    "y": 1841.0,
+                    "width": 32.15425491333008,
+                    "height": 18.0
+                  },
+                  "strokes": [],
+                  "fills": [
+                    {
+                      "blendMode": "NORMAL",
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.0,
+                        "g": 0.0,
+                        "b": 0.0,
+                        "a": 1.0
+                      }
+                    }
+                  ],
+                  "strokeWeight": 1.0,
+                  "style": {
+                    "fontFamily": "Inter",
+                    "fontPostScriptName": "Inter-SemiBold",
+                    "fontStyle": "Semi Bold",
+                    "fontWeight": 600,
+                    "textAutoResize": "HEIGHT",
+                    "fontSize": 15.0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP",
+                    "letterSpacing": 0.0,
+                    "lineHeightPx": 18.15340805053711,
+                    "lineHeightPercent": 100.0,
+                    "lineHeightUnit": "INTRINSIC_%"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "37:213",
+      "type": "FRAME",
+      "name": "Light - Portrait 1",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": 57.0,
+        "y": 2633.0,
+        "width": 134.0,
+        "height": 34.0
+      },
+      "strokes": [],
+      "fills": [
+        {
+          "blendMode": "NORMAL",
+          "visible": false,
+          "type": "SOLID",
+          "color": {
+            "r": 1.0,
+            "g": 1.0,
+            "b": 1.0,
+            "a": 1.0
+          }
+        }
+      ],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "id": "37:214",
+          "type": "GROUP",
+          "name": "Bars-/-Home-Indicator-/-iPhone-/-Light---Portrait",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": 57.0,
+            "y": 2654.0,
+            "width": 134.0,
+            "height": 5.0
+          },
+          "strokes": [],
+          "fills": [],
+          "strokeWeight": 1.0,
+          "children": [
+            {
+              "id": "37:215",
+              "type": "VECTOR",
+              "name": "Home-Indicator",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": 57.0,
+                "y": 2654.0,
+                "width": 134.0,
+                "height": 5.0
+              },
+              "strokes": [],
+              "fills": [
+                {
+                  "blendMode": "NORMAL",
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.0,
+                    "g": 0.0,
+                    "b": 0.0,
+                    "a": 1.0
+                  }
+                }
+              ],
+              "strokeWeight": 1.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "37:285",
+      "type": "GROUP",
+      "name": "user",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": 84.0,
+        "y": 1915.0,
+        "width": 80.0,
+        "height": 80.0
+      },
+      "strokes": [],
+      "fills": [],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "id": "37:278",
+          "type": "FRAME",
+          "name": "user",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": 97.0,
+            "y": 1924.0,
+            "width": 50.0,
+            "height": 50.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "visible": false,
+              "type": "SOLID",
+              "color": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "children": [
+            {
+              "id": "37:279",
+              "type": "VECTOR",
+              "name": "Vector",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": 105.0,
+                "y": 1955.25,
+                "width": 40.33000183105469,
+                "height": 16.5
+              },
+              "strokes": [],
+              "fills": [
+                {
+                  "blendMode": "NORMAL",
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.7607843279838562,
+                    "g": 0.7607843279838562,
+                    "b": 0.7607843279838562,
+                    "a": 1.0
+                  }
+                }
+              ],
+              "strokeWeight": 2.0
+            },
+            {
+              "id": "37:280",
+              "type": "VECTOR",
+              "name": "Vector",
+              "interactions": [],
+              "absoluteBoundingBox": {
+                "x": 115.0,
+                "y": 1930.25,
+                "width": 20.0,
+                "height": 20.0
+              },
+              "strokes": [],
+              "fills": [
+                {
+                  "blendMode": "NORMAL",
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.7607843279838562,
+                    "g": 0.7607843279838562,
+                    "b": 0.7607843279838562,
+                    "a": 1.0
+                  }
+                }
+              ],
+              "strokeWeight": 2.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "37:281",
+      "characters": "Edit profile",
+      "type": "TEXT",
+      "name": "Edit profile",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": 78.0,
+        "y": 1885.0,
+        "width": 93.0,
+        "height": 20.0
+      },
+      "strokes": [],
+      "fills": [
+        {
+          "blendMode": "NORMAL",
+          "type": "SOLID",
+          "color": {
+            "r": 0.0,
+            "g": 0.0,
+            "b": 0.0,
+            "a": 1.0
+          }
+        }
+      ],
+      "strokeWeight": 1.0,
+      "style": {
+        "fontFamily": "Montserrat",
+        "fontPostScriptName": "MontserratRoman-Bold",
+        "fontStyle": "Bold",
+        "fontWeight": 700,
+        "textAutoResize": "WIDTH_AND_HEIGHT",
+        "fontSize": 16.0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP",
+        "letterSpacing": 0.0,
+        "lineHeightPx": 19.503999710083008,
+        "lineHeightPercent": 100.0,
+        "lineHeightUnit": "INTRINSIC_%"
+      }
+    },
+    {
+      "cornerRadius": 8.0,
+      "id": "37:292",
+      "type": "GROUP",
+      "name": "fname",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -51.0,
+        "y": 2015.0,
+        "width": 341.0,
+        "height": 44.0
+      },
+      "strokes": [],
+      "fills": [],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "cornerRadius": 8.0,
+          "id": "37:286",
+          "type": "RECTANGLE",
+          "name": "Rectangle 4133",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -51.0,
+            "y": 2015.0,
+            "width": 341.0,
+            "height": 44.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.9450980424880981,
+                "g": 0.9450980424880981,
+                "b": 0.9450980424880981,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0
+        },
+        {
+          "id": "37:290",
+          "characters": "First name",
+          "type": "TEXT",
+          "name": "First name",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -35.0,
+            "y": 2019.0,
+            "width": 66.0,
+            "height": 15.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.3607843220233917,
+                "g": 0.3607843220233917,
+                "b": 0.3607843220233917,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 12.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 14.628000259399414,
+            "lineHeightPercent": 100.0,
+            "lineHeightUnit": "INTRINSIC_%"
+          }
+        },
+        {
+          "id": "37:291",
+          "characters": "Paul",
+          "type": "TEXT",
+          "name": "Paul",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -36.0,
+            "y": 2037.0,
+            "width": 32.0,
+            "height": 17.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 14.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 17.06599998474121,
+            "lineHeightPercent": 100.0,
+            "lineHeightUnit": "INTRINSIC_%"
+          }
+        }
+      ]
+    },
+    {
+      "cornerRadius": 8.0,
+      "id": "37:293",
+      "type": "GROUP",
+      "name": "lname",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -51.0,
+        "y": 2071.0,
+        "width": 341.0,
+        "height": 44.0
+      },
+      "strokes": [],
+      "fills": [],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "cornerRadius": 8.0,
+          "id": "37:294",
+          "type": "RECTANGLE",
+          "name": "Rectangle 4133",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -51.0,
+            "y": 2071.0,
+            "width": 341.0,
+            "height": 44.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.9450980424880981,
+                "g": 0.9450980424880981,
+                "b": 0.9450980424880981,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0
+        },
+        {
+          "id": "37:295",
+          "characters": "Last name",
+          "type": "TEXT",
+          "name": "Last name",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -35.0,
+            "y": 2075.0,
+            "width": 64.0,
+            "height": 15.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.3607843220233917,
+                "g": 0.3607843220233917,
+                "b": 0.3607843220233917,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 12.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 14.628000259399414,
+            "lineHeightPercent": 100.0,
+            "lineHeightUnit": "INTRINSIC_%"
+          }
+        },
+        {
+          "id": "37:296",
+          "characters": "Walker",
+          "type": "TEXT",
+          "name": "Walker",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -36.0,
+            "y": 2093.0,
+            "width": 50.0,
+            "height": 17.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 14.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 17.06599998474121,
+            "lineHeightPercent": 100.0,
+            "lineHeightUnit": "INTRINSIC_%"
+          }
+        }
+      ]
+    },
+    {
+      "cornerRadius": 8.0,
+      "id": "37:297",
+      "type": "GROUP",
+      "name": "lname",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -51.0,
+        "y": 2128.0,
+        "width": 341.0,
+        "height": 44.0
+      },
+      "strokes": [],
+      "fills": [],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "cornerRadius": 8.0,
+          "id": "37:298",
+          "type": "RECTANGLE",
+          "name": "Rectangle 4133",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -51.0,
+            "y": 2128.0,
+            "width": 341.0,
+            "height": 44.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.9450980424880981,
+                "g": 0.9450980424880981,
+                "b": 0.9450980424880981,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0
+        },
+        {
+          "id": "37:299",
+          "characters": "Phone Number",
+          "type": "TEXT",
+          "name": "Phone Number",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -35.0,
+            "y": 2132.0,
+            "width": 95.0,
+            "height": 15.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.5529412031173706,
+                "g": 0.5529412031173706,
+                "b": 0.5529412031173706,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 12.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 14.628000259399414,
+            "lineHeightPercent": 100.0,
+            "lineHeightUnit": "INTRINSIC_%"
+          }
+        },
+        {
+          "id": "37:300",
+          "characters": "+2345643245643",
+          "type": "TEXT",
+          "name": "+2345643245643",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -36.0,
+            "y": 2150.0,
+            "width": 119.0,
+            "height": 17.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.5529412031173706,
+                "g": 0.5529412031173706,
+                "b": 0.5529412031173706,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 14.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 17.06599998474121,
+            "lineHeightPercent": 100.0,
+            "lineHeightUnit": "INTRINSIC_%"
+          }
+        }
+      ]
+    },
+    {
+      "id": "37:301",
+      "characters": "Your phone number can’t be changed. if you want to link your account to another phone number, please contact Customer Support",
+      "type": "TEXT",
+      "name": "Your phone number can’t be changed. if you want to link your account to another phone number, please contact Customer Support",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -51.0,
+        "y": 2188.0,
+        "width": 359.0,
+        "height": 54.0
+      },
+      "strokes": [],
+      "fills": [
+        {
+          "blendMode": "NORMAL",
+          "type": "SOLID",
+          "color": {
+            "r": 0.3607843220233917,
+            "g": 0.3607843220233917,
+            "b": 0.3607843220233917,
+            "a": 1.0
+          }
+        }
+      ],
+      "strokeWeight": 1.0,
+      "style": {
+        "fontFamily": "Montserrat",
+        "fontPostScriptName": "MontserratRoman-Medium",
+        "fontStyle": "Medium",
+        "fontWeight": 500,
+        "textAutoResize": "HEIGHT",
+        "fontSize": 11.0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP",
+        "letterSpacing": 0.0,
+        "lineHeightPx": 18.0,
+        "lineHeightPercent": 134.2382049560547,
+        "lineHeightPercentFontSize": 163.63636779785156,
+        "lineHeightUnit": "PIXELS"
+      }
+    },
+    {
+      "id": "37:310",
+      "characters": "We will not post anything without your permission",
+      "type": "TEXT",
+      "name": "We will not post anything without your permission",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -52.0,
+        "y": 2564.0,
+        "width": 359.0,
+        "height": 18.0
+      },
+      "strokes": [],
+      "fills": [
+        {
+          "blendMode": "NORMAL",
+          "type": "SOLID",
+          "color": {
+            "r": 0.3607843220233917,
+            "g": 0.3607843220233917,
+            "b": 0.3607843220233917,
+            "a": 1.0
+          }
+        }
+      ],
+      "strokeWeight": 1.0,
+      "style": {
+        "fontFamily": "Montserrat",
+        "fontPostScriptName": "MontserratRoman-Medium",
+        "fontStyle": "Medium",
+        "fontWeight": 500,
+        "textAutoResize": "HEIGHT",
+        "fontSize": 11.0,
+        "textAlignHorizontal": "CENTER",
+        "textAlignVertical": "TOP",
+        "letterSpacing": 0.0,
+        "lineHeightPx": 18.0,
+        "lineHeightPercent": 134.2382049560547,
+        "lineHeightPercentFontSize": 163.63636779785156,
+        "lineHeightUnit": "PIXELS"
+      }
+    },
+    {
+      "cornerRadius": 24.0,
+      "id": "37:305",
+      "type": "GROUP",
+      "name": "apply btn",
+      "interactions": [],
+      "absoluteBoundingBox": {
+        "x": -59.0,
+        "y": 2508.0,
+        "width": 356.0,
+        "height": 44.0
+      },
+      "strokes": [],
+      "fills": [],
+      "strokeWeight": 1.0,
+      "children": [
+        {
+          "cornerRadius": 24.0,
+          "id": "37:306",
+          "type": "RECTANGLE",
+          "name": "Rectangle 4117",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -59.0,
+            "y": 2508.0,
+            "width": 356.0,
+            "height": 44.0
+          },
+          "strokes": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.6627451181411743,
+                "g": 0.6627451181411743,
+                "b": 0.6627451181411743,
+                "a": 1.0
+              }
+            }
+          ],
+          "fills": [],
+          "strokeWeight": 1.0
+        },
+        {
+          "id": "37:308",
+          "characters": "Connect to Facebook",
+          "type": "TEXT",
+          "name": "Connect to Facebook",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": 31.0,
+            "y": 2520.0,
+            "width": 174.0,
+            "height": 20.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.0,
+                "g": 0.0,
+                "b": 0.0,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-Medium",
+            "fontStyle": "Medium",
+            "fontWeight": 500,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 16.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 20.0,
+            "lineHeightPercent": 102.5430679321289,
+            "lineHeightPercentFontSize": 125.0,
+            "lineHeightUnit": "PIXELS"
+          }
+        },
+        {
+          "id": "37:309",
+          "characters": "f",
+          "type": "TEXT",
+          "name": "f",
+          "interactions": [],
+          "absoluteBoundingBox": {
+            "x": -31.0,
+            "y": 2520.0,
+            "width": 10.0,
+            "height": 20.0
+          },
+          "strokes": [],
+          "fills": [
+            {
+              "blendMode": "NORMAL",
+              "type": "SOLID",
+              "color": {
+                "r": 0.1006423830986023,
+                "g": 0.3313405513763428,
+                "b": 0.7791666388511658,
+                "a": 1.0
+              }
+            }
+          ],
+          "strokeWeight": 1.0,
+          "style": {
+            "fontFamily": "Montserrat",
+            "fontPostScriptName": "MontserratRoman-ExtraBold",
+            "fontStyle": "ExtraBold",
+            "fontWeight": 800,
+            "textAutoResize": "WIDTH_AND_HEIGHT",
+            "fontSize": 24.0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "letterSpacing": 0.0,
+            "lineHeightPx": 20.0,
+            "lineHeightPercent": 68.36204528808594,
+            "lineHeightPercentFontSize": 83.33333587646484,
+            "lineHeightUnit": "PIXELS"
+          }
+        }
+      ]
+    }
+  ]
+}

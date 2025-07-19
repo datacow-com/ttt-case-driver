@@ -1,0 +1,34 @@
+llm_agents:
+  load_page:
+    provider: "claude-3"
+    api_key: "${CLAUDE_API_KEY}"
+    endpoint: "https://api.anthropic.com"
+    temperature: 0.2
+  match_viewpoints:
+    provider: "gpt-4o"
+    api_key: "${OPENAI_API_KEY}"
+    endpoint: "https://api.openai.com/v1"
+    temperature: 0.1
+  generate_testcases:
+    provider: "gpt-4o"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.3
+  route_infer:
+    provider: "gemini-pro"
+    api_key: "${GEMINI_API_KEY}"
+    endpoint: "https://..."
+    temperature: 0.2
+output:
+  format: "csv"
+  include_mermaid: true
+storage:
+  postgres_url: "${POSTGRES_URL}"
+  minio_url: "${MINIO_URL}"
+  minio_access_key: "${MINIO_ACCESS_KEY}"
+  minio_secret_key: "${MINIO_SECRET_KEY}"
+logging:
+  level: "INFO"
+  save_intermediate: true
+custom:
+  case_id_prefix: "TC-"
+  language: "zh"

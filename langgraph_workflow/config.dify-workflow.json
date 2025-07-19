@@ -1,0 +1,149 @@
+{
+	"workflow": {
+		"entry_point": "user_input",
+		"nodes": {
+			"user_input": {
+				"type": "input",
+				"data": {
+					"title": "测试用例生成输入",
+					"fields": [
+						{
+							"name": "figma_yaml_file",
+							"type": "file",
+							"required": true,
+							"description": "上传从 Figma API 或导出的 YAML 页面结构"
+						},
+						{
+							"name": "viewpoints_file",
+							"type": "file",
+							"required": true,
+							"description": "上传测试观点（viewpoints.yaml / JSON）"
+						},
+						{
+							"name": "history_cases_file",
+							"type": "file",
+							"required": false,
+							"description": "上传历史测试用例（可选，JSON/CSV）"
+						}
+					]
+				},
+				"next": "load_page"
+			},
+
+			"load_page": {
+				"type": "http",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/load_page/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"figma_yaml": "{{figma_yaml_file.content}}"
+					}
+				},
+				"next": "match_viewpoints"
+			},
+
+			"match_viewpoints": {
+				"type": "http",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/match_viewpoints/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"page_structure": "{{load_page.response.content}}",
+						"viewpoints": "{{viewpoints_file.content}}"
+					}
+				},
+				"next": "generate_testcases"
+			},
+
+			"generate_testcases": {
+				"type": "http",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/generate_testcases/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"component_viewpoint_map": "{{match_viewpoints.response.content}}",
+						"agent_config": {
+							"provider": "openai",
+							"api_key": "{{api_key}}",
+							"model": "gpt-4o",
+							"temperature": 0.3
+						}
+					}
+				},
+				"next": "route_infer"
+			},
+
+			"route_infer": {
+				"type": "http",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/route_infer/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"page_structure": "{{load_page.response.content}}"
+					}
+				},
+				"next": "generate_cross_page_case"
+			},
+
+			"generate_cross_page_case": {
+				"type": "http",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/generate_cross_page_case/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"routing_info": "{{route_infer.response.content}}",
+						"base_testcases": "{{generate_testcases.response.content}}",
+						"agent_config": {
+							"provider": "openai",
+							"api_key": "{{api_key}}",
+							"model": "gpt-4o",
+							"temperature": 0.2
+						}
+					}
+				},
+				"next": "format_output"
+			},
+
+			"format_output": {
+				"type": "http",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/format_output/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"testcases": "{{generate_cross_page_case.response.content}}",
+						"format": "markdown"
+					}
+				},
+				"next": "show_result"
+			},
+
+			"show_result": {
+				"type": "output",
+				"data": {
+					"title": "结构化测试用例输出（Markdown）",
+					"description": "以下是从Figma自动生成的结构化测试用例",
+					"display_type": "markdown",
+					"content": "{{format_output.response.content}}"
+				}
+			}
+		}
+	}
+}
