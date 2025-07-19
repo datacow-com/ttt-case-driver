@@ -1,19 +1,4 @@
 import requests
-import sys
-
-# Figma API access token（请注意保护你的 token 安全）
-ACCESS_TOKEN = "figd_BnC3jmqlxuRzcdVfYuHg-YfNteOT8pp-G5Gqt0Ze"
-# Figma 文件 key，从 URL 中提取
-FILE_KEY = "52jDe7Im5bAr6J8Fl9sFn4"
-
-# Figma API endpoint
-FIGMA_API_URL = f"https://api.figma.com/v1/files/{FILE_KEY}"
-
-headers = {
-    "X-Figma-Token": ACCESS_TOKEN
-}
-
-import requests
 import json
 import os
 import sys

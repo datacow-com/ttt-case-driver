@@ -1,19 +1,22 @@
 from typing import Dict, Any
-import yaml
+import json
 
-def match_viewpoints(page_structure: Dict[str, Any], viewpoints_db_path: str) -> Dict[str, Any]:
+def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any]) -> Dict[str, Any]:
     """
-    为每个组件匹配测试观点
+    为每个组件匹配测试观点，输入为结构化简化后的JSON和观点库（JSON/YAML均可）
     """
-    with open(viewpoints_db_path, 'r', encoding='utf-8') as f:
-        viewpoints_db = yaml.safe_load(f)
-    # 简单示例：按组件类型匹配观点
-    component_viewpoints = {}
-    for comp in page_structure.get('components', []):
-        comp_type = comp.get('type')
+    def traverse(node, results):
+        if not node:
+            return
+        comp_type = node.get('type')
         viewpoints = viewpoints_db.get(comp_type, [])
-        component_viewpoints[comp['id']] = {
-            'component': comp,
-            'viewpoints': viewpoints
-        }
-    return component_viewpoints
+        if viewpoints:
+            results.append({
+                'component': node,
+                'viewpoints': viewpoints
+            })
+        for child in node.get('children', []):
+            traverse(child, results)
+    results = []
+    traverse(clean_json, results)
+    return {'component_viewpoints': results}

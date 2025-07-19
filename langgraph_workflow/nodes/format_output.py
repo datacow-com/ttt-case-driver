@@ -1,10 +1,11 @@
 from typing import List, Dict, Any
+import yaml
 import csv
 import io
 
 def format_output(testcases: List[Dict[str, Any]], output_format: str = 'csv') -> str:
     """
-    格式化输出为CSV/Markdown等
+    格式化输出为CSV/Markdown/YAML等
     """
     if output_format == 'csv':
         output = io.StringIO()
@@ -15,7 +16,7 @@ def format_output(testcases: List[Dict[str, Any]], output_format: str = 'csv') -
             testcase = case.get('testcase', {})
             writer.writerow([
                 f"TC-{idx:03d}",
-                comp.get('page', ''),
+                comp.get('name', ''),
                 comp.get('id', ''),
                 case.get('viewpoint', ''),
                 testcase.get('steps', testcase),
@@ -27,7 +28,10 @@ def format_output(testcases: List[Dict[str, Any]], output_format: str = 'csv') -
         for idx, case in enumerate(testcases, 1):
             comp = case.get('component', {})
             testcase = case.get('testcase', {})
-            lines.append(f"| TC-{idx:03d} | {comp.get('page', '')} | {comp.get('id', '')} | {case.get('viewpoint', '')} | {testcase.get('steps', testcase)} | {testcase.get('expected', '')} |")
+            lines.append(f"| TC-{idx:03d} | {comp.get('name', '')} | {comp.get('id', '')} | {case.get('viewpoint', '')} | {testcase.get('steps', testcase)} | {testcase.get('expected', '')} |")
         return '\n'.join(lines)
+    elif output_format == 'yaml':
+        # 结构化YAML输出
+        return yaml.dump(testcases, allow_unicode=True)
     else:
         raise ValueError(f"Unsupported format: {output_format}")
