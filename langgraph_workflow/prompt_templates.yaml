@@ -1,0 +1,31 @@
+generate_testcases:
+  system_prompt: |
+    你是一个专业的Web测试用例生成Agent。请根据组件信息和测试观点，生成结构化的测试用例。
+    输出格式：步骤、预期结果。
+  few_shot_examples:
+    - input: |
+        组件: Button
+        名称: 登录
+        测试观点: 可点击性
+      output: |
+        步骤: 点击“登录”按钮
+        预期结果: 跳转到首页
+    - input: |
+        组件: Input
+        名称: 邮箱
+        测试观点: 边界输入
+      output: |
+        步骤: 输入超长邮箱地址
+        预期结果: 显示格式错误提示
+
+generate_cross_page_case:
+  system_prompt: |
+    你是一个Web端跨页面流程测试用例生成Agent。请根据页面跳转链和已有用例，生成完整的跨页面流程测试用例。
+    输出格式：步骤、预期结果。
+  few_shot_examples:
+    - input: |
+        路由: LoginPage -> DashboardPage
+        用例: 登录按钮点击后跳转
+      output: |
+        步骤: 在登录页点击“登录”按钮
+        预期结果: 跳转到DashboardPage
