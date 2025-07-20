@@ -32,11 +32,31 @@ async def run_node_fetch_and_clean_figma_json(
 @app.post("/run_node/match_viewpoints/")
 async def run_node_match_viewpoints(
     clean_json: UploadFile,
-    viewpoints_db: UploadFile
+    viewpoints_db: UploadFile,
+    provider: str = Form(None),
+    api_key: str = Form(None),
+    endpoint: str = Form(None),
+    temperature: float = Form(0.2),
+    prompt_template: str = Form(None),
+    few_shot_examples: str = Form(None)
 ):
     clean_json_obj = json.load(clean_json.file)
     viewpoints_db_obj = json.load(viewpoints_db.file)
-    result = match_viewpoints(clean_json_obj, viewpoints_db_obj)
+    
+    # 如果提供了LLM参数，使用LLM模式
+    if provider or api_key:
+        few_shot = json.loads(few_shot_examples) if few_shot_examples else None
+        llm_cfg = {
+            'provider': provider or 'gpt-4o',
+            'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
+            'endpoint': endpoint,
+            'temperature': temperature
+        }
+        llm_client = LLMClient(**llm_cfg)
+        result = match_viewpoints(clean_json_obj, viewpoints_db_obj, llm_client, prompt_template, few_shot)
+    else:
+        result = match_viewpoints(clean_json_obj, viewpoints_db_obj)
+    
     INTERMEDIATE_RESULTS['match_viewpoints'] = result
     return JSONResponse(result)
 
@@ -54,7 +74,7 @@ async def run_node_generate_testcases(
     # few_shot_examples 传入为JSON字符串
     few_shot = json.loads(few_shot_examples) if few_shot_examples else None
     llm_cfg = {
-        'provider': provider or os.environ.get('OPENAI_API_KEY', 'gpt-4o'),
+        'provider': provider or 'gpt-4o',
         'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
         'endpoint': endpoint,
         'temperature': temperature
@@ -65,9 +85,31 @@ async def run_node_generate_testcases(
     return JSONResponse(result)
 
 @app.post("/run_node/route_infer/")
-async def run_node_route_infer(clean_json: UploadFile):
+async def run_node_route_infer(
+    clean_json: UploadFile,
+    provider: str = Form(None),
+    api_key: str = Form(None),
+    endpoint: str = Form(None),
+    temperature: float = Form(0.2),
+    prompt_template: str = Form(None),
+    few_shot_examples: str = Form(None)
+):
     clean_json_obj = json.load(clean_json.file)
-    result = route_infer(clean_json_obj)
+    
+    # 如果提供了LLM参数，使用LLM模式
+    if provider or api_key:
+        few_shot = json.loads(few_shot_examples) if few_shot_examples else None
+        llm_cfg = {
+            'provider': provider or 'gpt-4o',
+            'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
+            'endpoint': endpoint,
+            'temperature': temperature
+        }
+        llm_client = LLMClient(**llm_cfg)
+        result = route_infer(clean_json_obj, llm_client, prompt_template, few_shot)
+    else:
+        result = route_infer(clean_json_obj)
+    
     INTERMEDIATE_RESULTS['route_infer'] = result
     return JSONResponse(result)
 
@@ -86,7 +128,7 @@ async def run_node_generate_cross_page_case(
     testcases_obj = json.load(testcases.file)
     few_shot = json.loads(few_shot_examples) if few_shot_examples else None
     llm_cfg = {
-        'provider': provider or os.environ.get('OPENAI_API_KEY', 'gpt-4o'),
+        'provider': provider or 'gpt-4o',
         'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
         'endpoint': endpoint,
         'temperature': temperature
@@ -99,10 +141,30 @@ async def run_node_generate_cross_page_case(
 @app.post("/run_node/format_output/")
 async def run_node_format_output(
     testcases: UploadFile,
-    output_format: str = Form('csv')
+    output_format: str = Form('csv'),
+    provider: str = Form(None),
+    api_key: str = Form(None),
+    endpoint: str = Form(None),
+    temperature: float = Form(0.2),
+    prompt_template: str = Form(None),
+    few_shot_examples: str = Form(None)
 ):
     testcases_obj = json.load(testcases.file)
-    result = format_output(testcases_obj, output_format)
+    
+    # 如果提供了LLM参数，使用LLM模式
+    if provider or api_key:
+        few_shot = json.loads(few_shot_examples) if few_shot_examples else None
+        llm_cfg = {
+            'provider': provider or 'gpt-4o',
+            'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
+            'endpoint': endpoint,
+            'temperature': temperature
+        }
+        llm_client = LLMClient(**llm_cfg)
+        result = format_output(testcases_obj, output_format, llm_client, prompt_template, few_shot)
+    else:
+        result = format_output(testcases_obj, output_format)
+    
     INTERMEDIATE_RESULTS['format_output'] = result
     return PlainTextResponse(result)
 

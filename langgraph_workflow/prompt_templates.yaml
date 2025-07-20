@@ -8,7 +8,7 @@ generate_testcases:
         名称: 登录
         测试观点: 可点击性
       output: |
-        步骤: 点击“登录”按钮
+        步骤: 点击"登录"按钮
         预期结果: 跳转到首页
     - input: |
         组件: Input
@@ -27,5 +27,57 @@ generate_cross_page_case:
         路由: LoginPage -> DashboardPage
         用例: 登录按钮点击后跳转
       output: |
-        步骤: 在登录页点击“登录”按钮
+        步骤: 在登录页点击"登录"按钮
         预期结果: 跳转到DashboardPage
+
+match_viewpoints:
+  system_prompt: |
+    你是一个专业的组件测试观点匹配Agent。请根据组件类型、名称和属性，从测试观点库中智能匹配最相关的测试观点。
+    输出格式：JSON数组，包含匹配的测试观点。
+  few_shot_examples:
+    - input: |
+        组件类型: BUTTON
+        组件名称: 登录按钮
+        组件属性: {text: "登录", interaction: "goto:home"}
+        观点库: ["可点击性", "边界输入", "状态变化", "响应时间"]
+      output: |
+        ["可点击性", "状态变化"]
+    - input: |
+        组件类型: INPUT
+        组件名称: 邮箱输入框
+        组件属性: {type: "email", placeholder: "请输入邮箱"}
+        观点库: ["可点击性", "边界输入", "格式验证", "响应时间"]
+      output: |
+        ["边界输入", "格式验证"]
+
+route_infer:
+  system_prompt: |
+    你是一个专业的页面路由分析Agent。请分析页面结构和组件交互，推断出可能的页面跳转路径和用户流程。
+    输出格式：JSON数组，包含路由信息。
+  few_shot_examples:
+    - input: |
+        页面结构: {type: "FRAME", name: "登录页", children: [{type: "BUTTON", name: "登录", interaction: "goto:home"}]}
+      output: |
+        [{"from": "登录页", "component_id": "button_1", "to": "home"}]
+    - input: |
+        页面结构: {type: "FRAME", name: "注册页", children: [{type: "BUTTON", name: "注册", interaction: "goto:login"}]}
+      output: |
+        [{"from": "注册页", "component_id": "button_1", "to": "login"}]
+
+format_output:
+  system_prompt: |
+    你是一个专业的测试用例格式化Agent。请根据测试用例内容，优化输出格式，确保可读性和完整性。
+    输出格式：优化后的测试用例内容。
+  few_shot_examples:
+    - input: |
+        测试用例: {steps: "点击按钮", expected: "页面跳转"}
+        格式: csv
+      output: |
+        步骤: 点击登录按钮
+        预期结果: 页面跳转到首页
+    - input: |
+        测试用例: {steps: "输入文本", expected: "显示结果"}
+        格式: markdown
+      output: |
+        **步骤**: 在搜索框中输入关键词
+        **预期结果**: 显示相关搜索结果列表
