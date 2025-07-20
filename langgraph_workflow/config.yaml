@@ -4,31 +4,55 @@ llm_agents:
     api_key: "${CLAUDE_API_KEY}"
     endpoint: "https://api.anthropic.com"
     temperature: 0.2
+    language: "ja"
   match_viewpoints:
     provider: "gpt-4o"
     api_key: "${OPENAI_API_KEY}"
     endpoint: "https://api.openai.com/v1"
     temperature: 0.1
+    language: "ja"
   generate_testcases:
     provider: "gpt-4o"
     api_key: "${OPENAI_API_KEY}"
     temperature: 0.3
+    language: "ja"
   route_infer:
     provider: "gemini-pro"
     api_key: "${GEMINI_API_KEY}"
     endpoint: "https://..."
     temperature: 0.2
+    language: "ja"
+  generate_cross_page_case:
+    provider: "gpt-4o"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.2
+    language: "ja"
+  format_output:
+    provider: "gpt-4o"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.2
+    language: "ja"
+
 output:
-  format: "csv"
+  format: "excel"
   include_mermaid: true
+  language: "ja"
+  date_format: "YYYY/MM/DD"
+  time_format: "HH:mm"
+
 storage:
   postgres_url: "${POSTGRES_URL}"
   minio_url: "${MINIO_URL}"
   minio_access_key: "${MINIO_ACCESS_KEY}"
   minio_secret_key: "${MINIO_SECRET_KEY}"
+
 logging:
   level: "INFO"
   save_intermediate: true
+  language: "ja"
+
 custom:
   case_id_prefix: "TC-"
-  language: "zh"
+  language: "ja"
+  supported_languages: ["en", "ja"]
+  default_language: "ja"

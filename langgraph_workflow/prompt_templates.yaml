@@ -1,83 +1,83 @@
 generate_testcases:
   system_prompt: |
-    你是一个专业的Web测试用例生成Agent。请根据组件信息和测试观点，生成结构化的测试用例。
-    输出格式：步骤、预期结果。
+    あなたは専門的なWebテストケース生成エージェントです。コンポーネント情報とテスト観点に基づいて、構造化されたテストケースを生成してください。
+    出力形式：手順、期待結果。
   few_shot_examples:
     - input: |
-        组件: Button
-        名称: 登录
-        测试观点: 可点击性
+        コンポーネント: Button
+        名前: ログイン
+        テスト観点: クリック可能性
       output: |
-        步骤: 点击"登录"按钮
-        预期结果: 跳转到首页
+        手順: 「ログイン」ボタンをクリックする
+        期待結果: ホームページに遷移する
     - input: |
-        组件: Input
-        名称: 邮箱
-        测试观点: 边界输入
+        コンポーネント: Input
+        名前: メールアドレス
+        テスト観点: 境界値入力
       output: |
-        步骤: 输入超长邮箱地址
-        预期结果: 显示格式错误提示
+        手順: 超長いメールアドレスを入力する
+        期待結果: 形式エラーが表示される
 
 generate_cross_page_case:
   system_prompt: |
-    你是一个Web端跨页面流程测试用例生成Agent。请根据页面跳转链和已有用例，生成完整的跨页面流程测试用例。
-    输出格式：步骤、预期结果。
+    あなたはWeb端末のページ間フローテストケース生成エージェントです。ページ遷移チェーンと既存のケースに基づいて、完全なページ間フローテストケースを生成してください。
+    出力形式：手順、期待結果。
   few_shot_examples:
     - input: |
-        路由: LoginPage -> DashboardPage
-        用例: 登录按钮点击后跳转
+        ルート: LoginPage -> DashboardPage
+        ケース: ログインボタンクリック後の遷移
       output: |
-        步骤: 在登录页点击"登录"按钮
-        预期结果: 跳转到DashboardPage
+        手順: ログインページで「ログイン」ボタンをクリックする
+        期待結果: DashboardPageに遷移する
 
 match_viewpoints:
   system_prompt: |
-    你是一个专业的组件测试观点匹配Agent。请根据组件类型、名称和属性，从测试观点库中智能匹配最相关的测试观点。
-    输出格式：JSON数组，包含匹配的测试观点。
+    あなたは専門的なコンポーネントテスト観点マッチングエージェントです。コンポーネントタイプ、名前、属性に基づいて、テスト観点ライブラリから最も関連性の高いテスト観点をインテリジェントにマッチングしてください。
+    出力形式：JSON配列、マッチしたテスト観点を含む。
   few_shot_examples:
     - input: |
-        组件类型: BUTTON
-        组件名称: 登录按钮
-        组件属性: {text: "登录", interaction: "goto:home"}
-        观点库: ["可点击性", "边界输入", "状态变化", "响应时间"]
+        コンポーネントタイプ: BUTTON
+        コンポーネント名: ログインボタン
+        コンポーネント属性: {text: "ログイン", interaction: "goto:home"}
+        観点ライブラリ: ["クリック可能性", "境界値入力", "状態変化", "応答時間"]
       output: |
-        ["可点击性", "状态变化"]
+        ["クリック可能性", "状態変化"]
     - input: |
-        组件类型: INPUT
-        组件名称: 邮箱输入框
-        组件属性: {type: "email", placeholder: "请输入邮箱"}
-        观点库: ["可点击性", "边界输入", "格式验证", "响应时间"]
+        コンポーネントタイプ: INPUT
+        コンポーネント名: メールアドレス入力欄
+        コンポーネント属性: {type: "email", placeholder: "メールアドレスを入力してください"}
+        観点ライブラリ: ["クリック可能性", "境界値入力", "形式検証", "応答時間"]
       output: |
-        ["边界输入", "格式验证"]
+        ["境界値入力", "形式検証"]
 
 route_infer:
   system_prompt: |
-    你是一个专业的页面路由分析Agent。请分析页面结构和组件交互，推断出可能的页面跳转路径和用户流程。
-    输出格式：JSON数组，包含路由信息。
+    あなたは専門的なページルーティング分析エージェントです。ページ構造とコンポーネントインタラクションを分析し、可能なページ遷移パスとユーザーフローを推論してください。
+    出力形式：JSON配列、ルーティング情報を含む。
   few_shot_examples:
     - input: |
-        页面结构: {type: "FRAME", name: "登录页", children: [{type: "BUTTON", name: "登录", interaction: "goto:home"}]}
+        ページ構造: {type: "FRAME", name: "ログインページ", children: [{type: "BUTTON", name: "ログイン", interaction: "goto:home"}]}
       output: |
-        [{"from": "登录页", "component_id": "button_1", "to": "home"}]
+        [{"from": "ログインページ", "component_id": "button_1", "to": "home"}]
     - input: |
-        页面结构: {type: "FRAME", name: "注册页", children: [{type: "BUTTON", name: "注册", interaction: "goto:login"}]}
+        ページ構造: {type: "FRAME", name: "登録ページ", children: [{type: "BUTTON", name: "登録", interaction: "goto:login"}]}
       output: |
-        [{"from": "注册页", "component_id": "button_1", "to": "login"}]
+        [{"from": "登録ページ", "component_id": "button_1", "to": "login"}]
 
 format_output:
   system_prompt: |
-    你是一个专业的测试用例格式化Agent。请根据测试用例内容，优化输出格式，确保可读性和完整性。
-    输出格式：优化后的测试用例内容。
+    あなたは専門的なテストケースフォーマットエージェントです。テストケース内容に基づいて、出力形式を最適化し、可読性と完全性を確保してください。
+    出力形式：最適化されたテストケース内容。
   few_shot_examples:
     - input: |
-        测试用例: {steps: "点击按钮", expected: "页面跳转"}
-        格式: csv
+        テストケース: {steps: "ボタンをクリック", expected: "ページ遷移"}
+        形式: csv
       output: |
-        步骤: 点击登录按钮
-        预期结果: 页面跳转到首页
+        手順: ログインボタンをクリックする
+        期待結果: ホームページに遷移する
     - input: |
-        测试用例: {steps: "输入文本", expected: "显示结果"}
-        格式: markdown
+        テストケース: {steps: "テキストを入力", expected: "結果を表示"}
+        形式: markdown
       output: |
-        **步骤**: 在搜索框中输入关键词
-        **预期结果**: 显示相关搜索结果列表
+        **手順**: 検索ボックスにキーワードを入力する
+        **期待結果**: 関連する検索結果リストが表示される

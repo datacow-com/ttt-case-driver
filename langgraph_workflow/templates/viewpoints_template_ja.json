@@ -1,0 +1,295 @@
+{
+  "BUTTON": [
+    {
+      "viewpoint": "クリック可能性の検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "ボタンが正常にクリックできることを確認",
+        "クリック後の応答時間を確認",
+        "クリック後の状態変化を確認",
+        "無効状態でのクリック動作を確認"
+      ],
+      "expected_result": "ボタンが正常に機能し、期待通りの動作をする",
+      "notes": "アクセシビリティの観点からも重要"
+    },
+    {
+      "viewpoint": "ボタンの状態変化検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "ホバー時の状態変化を確認",
+        "フォーカス時の状態変化を確認",
+        "アクティブ時の状態変化を確認",
+        "無効時の状態表示を確認"
+      ],
+      "expected_result": "各状態で適切な視覚的フィードバックが提供される",
+      "notes": "UX向上のため重要"
+    }
+  ],
+  "INPUT": [
+    {
+      "viewpoint": "テキスト入力の検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "正常なテキストが入力できることを確認",
+        "文字数制限が正しく機能することを確認",
+        "特殊文字の処理を確認",
+        "入力値の検証機能を確認"
+      ],
+      "expected_result": "入力フィールドが正常に機能する",
+      "notes": "セキュリティテストも含める"
+    },
+    {
+      "viewpoint": "入力値検証のテスト",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "必須項目の検証を確認",
+        "形式検証（メール、電話番号等）を確認",
+        "境界値テストを実行",
+        "エラーメッセージの表示を確認"
+      ],
+      "expected_result": "無効な入力に対して適切なエラーメッセージが表示される",
+      "notes": "ユーザビリティ向上のため重要"
+    }
+  ],
+  "FORM": [
+    {
+      "viewpoint": "フォーム送信の検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "必須項目の検証が正しく機能することを確認",
+        "フォーム送信後の処理を確認",
+        "エラーメッセージの表示を確認",
+        "送信ボタンの状態変化を確認"
+      ],
+      "expected_result": "フォームが正常に送信され、適切な処理が行われる",
+      "notes": "データの整合性チェックも重要"
+    },
+    {
+      "viewpoint": "フォームのリセット機能",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "リセットボタンの動作を確認",
+        "リセット後の状態を確認",
+        "確認ダイアログの表示を確認"
+      ],
+      "expected_result": "フォームが正しくリセットされる",
+      "notes": "ユーザーエクスペリエンス向上"
+    }
+  ],
+  "LINK": [
+    {
+      "viewpoint": "リンクの動作検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "リンクが正常にクリックできることを確認",
+        "正しいURLに遷移することを確認",
+        "新しいタブでの開き方を確認",
+        "無効なリンクの処理を確認"
+      ],
+      "expected_result": "リンクが期待通りに動作する",
+      "notes": "ナビゲーション機能の基本"
+    }
+  ],
+  "SELECT": [
+    {
+      "viewpoint": "セレクトボックスの動作検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "ドロップダウンの開閉を確認",
+        "オプションの選択を確認",
+        "デフォルト値の表示を確認",
+        "キーボード操作を確認"
+      ],
+      "expected_result": "セレクトボックスが正常に機能する",
+      "notes": "アクセシビリティ対応も重要"
+    }
+  ],
+  "CHECKBOX": [
+    {
+      "viewpoint": "チェックボックスの動作検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "チェック/アンチェックの動作を確認",
+        "状態の視覚的表示を確認",
+        "キーボード操作を確認",
+        "グループチェックボックスの動作を確認"
+      ],
+      "expected_result": "チェックボックスが正常に機能する",
+      "notes": "フォーム要素の基本機能"
+    }
+  ],
+  "RADIO": [
+    {
+      "viewpoint": "ラジオボタンの動作検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "選択/選択解除の動作を確認",
+        "グループ内での排他選択を確認",
+        "デフォルト選択を確認",
+        "キーボード操作を確認"
+      ],
+      "expected_result": "ラジオボタンが正常に機能する",
+      "notes": "単一選択の基本機能"
+    }
+  ],
+  "MODAL": [
+    {
+      "viewpoint": "モーダルの表示・非表示検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "モーダルの表示を確認",
+        "背景のスクロール制御を確認",
+        "閉じるボタンの動作を確認",
+        "ESCキーでの閉じる動作を確認"
+      ],
+      "expected_result": "モーダルが適切に表示・非表示される",
+      "notes": "UX向上の重要な要素"
+    }
+  ],
+  "TOAST": [
+    {
+      "viewpoint": "トースト通知の表示検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "通知の表示を確認",
+        "自動消去の動作を確認",
+        "手動閉じるの動作を確認",
+        "複数通知の表示順序を確認"
+      ],
+      "expected_result": "トースト通知が適切に表示される",
+      "notes": "ユーザーフィードバックの重要機能"
+    }
+  ],
+  "LOADING": [
+    {
+      "viewpoint": "ローディング表示の検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "ローディング表示の開始を確認",
+        "ローディング中の操作制御を確認",
+        "ローディング完了後の表示を確認",
+        "エラー時の表示を確認"
+      ],
+      "expected_result": "ローディング状態が適切に表示される",
+      "notes": "ユーザーエクスペリエンス向上"
+    }
+  ],
+  "IMAGE": [
+    {
+      "viewpoint": "画像表示の検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "画像の正常表示を確認",
+        "画像読み込み失敗時の表示を確認",
+        "画像のサイズ調整を確認",
+        "画像のクリック動作を確認"
+      ],
+      "expected_result": "画像が適切に表示される",
+      "notes": "コンテンツ表示の基本機能"
+    }
+  ],
+  "TEXT": [
+    {
+      "viewpoint": "テキスト表示の検証",
+      "priority": "LOW",
+      "category": "Functional",
+      "checklist": [
+        "テキストの正常表示を確認",
+        "文字化けの有無を確認",
+        "改行の表示を確認",
+        "リンクの表示を確認"
+      ],
+      "expected_result": "テキストが正しく表示される",
+      "notes": "基本表示機能"
+    }
+  ],
+  "CONTAINER": [
+    {
+      "viewpoint": "コンテナのレイアウト検証",
+      "priority": "LOW",
+      "category": "Functional",
+      "checklist": [
+        "レイアウトの正常表示を確認",
+        "レスポンシブ対応を確認",
+        "スクロール動作を確認",
+        "子要素の配置を確認"
+      ],
+      "expected_result": "コンテナが適切にレイアウトされる",
+      "notes": "UI構造の基本"
+    }
+  ],
+  "RATING": [
+    {
+      "viewpoint": "評価機能の検証",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "星評価の選択を確認",
+        "評価の表示を確認",
+        "評価の送信を確認",
+        "評価の更新を確認"
+      ],
+      "expected_result": "評価機能が正常に動作する",
+      "notes": "ユーザーインタラクション機能"
+    }
+  ],
+  "FILTER": [
+    {
+      "viewpoint": "フィルター機能の検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "フィルター条件の設定を確認",
+        "フィルター結果の表示を確認",
+        "フィルターのリセットを確認",
+        "複数フィルターの組み合わせを確認"
+      ],
+      "expected_result": "フィルター機能が正常に動作する",
+      "notes": "データ検索の重要機能"
+    }
+  ],
+  "MAP": [
+    {
+      "viewpoint": "マップ機能の検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "マップの表示を確認",
+        "ズーム機能を確認",
+        "ピンの表示を確認",
+        "位置情報の取得を確認"
+      ],
+      "expected_result": "マップ機能が正常に動作する",
+      "notes": "位置情報サービスの基本機能"
+    }
+  ],
+  "PAGE": [
+    {
+      "viewpoint": "ページ遷移の検証",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "ページの読み込みを確認",
+        "URLの変更を確認",
+        "ブラウザの戻る・進むを確認",
+        "ページのリロードを確認"
+      ],
+      "expected_result": "ページ遷移が正常に動作する",
+      "notes": "ナビゲーションの基本機能"
+    }
+  ]
+}

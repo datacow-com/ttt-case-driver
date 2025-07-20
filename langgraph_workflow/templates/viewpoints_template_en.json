@@ -1,0 +1,295 @@
+{
+  "BUTTON": [
+    {
+      "viewpoint": "Clickability Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Verify button can be clicked normally",
+        "Check response time after clicking",
+        "Check state changes after clicking",
+        "Verify click behavior in disabled state"
+      ],
+      "expected_result": "Button functions normally and performs expected actions",
+      "notes": "Important for accessibility perspective"
+    },
+    {
+      "viewpoint": "Button State Change Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check state changes on hover",
+        "Check state changes on focus",
+        "Check state changes when active",
+        "Check disabled state display"
+      ],
+      "expected_result": "Appropriate visual feedback is provided in each state",
+      "notes": "Important for UX improvement"
+    }
+  ],
+  "INPUT": [
+    {
+      "viewpoint": "Text Input Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Verify normal text can be entered",
+        "Check character limit functions correctly",
+        "Check special character handling",
+        "Verify input validation functionality"
+      ],
+      "expected_result": "Input field functions normally",
+      "notes": "Include security testing"
+    },
+    {
+      "viewpoint": "Input Validation Testing",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Check required field validation",
+        "Check format validation (email, phone, etc.)",
+        "Execute boundary value testing",
+        "Check error message display"
+      ],
+      "expected_result": "Appropriate error messages are displayed for invalid input",
+      "notes": "Important for usability improvement"
+    }
+  ],
+  "FORM": [
+    {
+      "viewpoint": "Form Submission Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Verify required field validation works correctly",
+        "Check form submission processing",
+        "Check error message display",
+        "Check submit button state changes"
+      ],
+      "expected_result": "Form submits normally and appropriate processing occurs",
+      "notes": "Data integrity checks are also important"
+    },
+    {
+      "viewpoint": "Form Reset Functionality",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check reset button behavior",
+        "Check state after reset",
+        "Check confirmation dialog display"
+      ],
+      "expected_result": "Form resets correctly",
+      "notes": "User experience improvement"
+    }
+  ],
+  "LINK": [
+    {
+      "viewpoint": "Link Action Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Verify link can be clicked normally",
+        "Check navigation to correct URL",
+        "Check opening in new tab",
+        "Check handling of invalid links"
+      ],
+      "expected_result": "Link behaves as expected",
+      "notes": "Basic navigation functionality"
+    }
+  ],
+  "SELECT": [
+    {
+      "viewpoint": "Select Box Action Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Check dropdown open/close",
+        "Check option selection",
+        "Check default value display",
+        "Check keyboard operation"
+      ],
+      "expected_result": "Select box functions normally",
+      "notes": "Accessibility support is also important"
+    }
+  ],
+  "CHECKBOX": [
+    {
+      "viewpoint": "Checkbox Action Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check check/uncheck behavior",
+        "Check visual state display",
+        "Check keyboard operation",
+        "Check group checkbox behavior"
+      ],
+      "expected_result": "Checkbox functions normally",
+      "notes": "Basic form element functionality"
+    }
+  ],
+  "RADIO": [
+    {
+      "viewpoint": "Radio Button Action Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check selection/deselection behavior",
+        "Check exclusive selection within group",
+        "Check default selection",
+        "Check keyboard operation"
+      ],
+      "expected_result": "Radio button functions normally",
+      "notes": "Basic single selection functionality"
+    }
+  ],
+  "MODAL": [
+    {
+      "viewpoint": "Modal Display/Hide Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Check modal display",
+        "Check background scroll control",
+        "Check close button behavior",
+        "Check close behavior with ESC key"
+      ],
+      "expected_result": "Modal displays and hides appropriately",
+      "notes": "Important element for UX improvement"
+    }
+  ],
+  "TOAST": [
+    {
+      "viewpoint": "Toast Notification Display Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check notification display",
+        "Check auto-dismiss behavior",
+        "Check manual close behavior",
+        "Check display order of multiple notifications"
+      ],
+      "expected_result": "Toast notifications display appropriately",
+      "notes": "Important user feedback functionality"
+    }
+  ],
+  "LOADING": [
+    {
+      "viewpoint": "Loading Display Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check loading display start",
+        "Check operation control during loading",
+        "Check display after loading completion",
+        "Check display on error"
+      ],
+      "expected_result": "Loading state displays appropriately",
+      "notes": "User experience improvement"
+    }
+  ],
+  "IMAGE": [
+    {
+      "viewpoint": "Image Display Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check normal image display",
+        "Check display on image load failure",
+        "Check image size adjustment",
+        "Check image click behavior"
+      ],
+      "expected_result": "Images display appropriately",
+      "notes": "Basic content display functionality"
+    }
+  ],
+  "TEXT": [
+    {
+      "viewpoint": "Text Display Verification",
+      "priority": "LOW",
+      "category": "Functional",
+      "checklist": [
+        "Check normal text display",
+        "Check for character corruption",
+        "Check line break display",
+        "Check link display"
+      ],
+      "expected_result": "Text displays correctly",
+      "notes": "Basic display functionality"
+    }
+  ],
+  "CONTAINER": [
+    {
+      "viewpoint": "Container Layout Verification",
+      "priority": "LOW",
+      "category": "Functional",
+      "checklist": [
+        "Check normal layout display",
+        "Check responsive support",
+        "Check scroll behavior",
+        "Check child element placement"
+      ],
+      "expected_result": "Container layouts appropriately",
+      "notes": "Basic UI structure"
+    }
+  ],
+  "RATING": [
+    {
+      "viewpoint": "Rating Function Verification",
+      "priority": "MEDIUM",
+      "category": "Functional",
+      "checklist": [
+        "Check star rating selection",
+        "Check rating display",
+        "Check rating submission",
+        "Check rating update"
+      ],
+      "expected_result": "Rating function works normally",
+      "notes": "User interaction functionality"
+    }
+  ],
+  "FILTER": [
+    {
+      "viewpoint": "Filter Function Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Check filter condition setting",
+        "Check filter result display",
+        "Check filter reset",
+        "Check combination of multiple filters"
+      ],
+      "expected_result": "Filter function works normally",
+      "notes": "Important data search functionality"
+    }
+  ],
+  "MAP": [
+    {
+      "viewpoint": "Map Function Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Check map display",
+        "Check zoom functionality",
+        "Check pin display",
+        "Check location information retrieval"
+      ],
+      "expected_result": "Map function works normally",
+      "notes": "Basic location service functionality"
+    }
+  ],
+  "PAGE": [
+    {
+      "viewpoint": "Page Navigation Verification",
+      "priority": "HIGH",
+      "category": "Functional",
+      "checklist": [
+        "Check page loading",
+        "Check URL changes",
+        "Check browser back/forward",
+        "Check page reload"
+      ],
+      "expected_result": "Page navigation works normally",
+      "notes": "Basic navigation functionality"
+    }
+  ]
+}

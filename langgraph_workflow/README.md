@@ -4,6 +4,15 @@
 
 LangGraph Workflow is an automated pipeline for generating structured test cases from Figma design files. It leverages multiple LLM providers (OpenAI, Anthropic, Gemini, etc.) and supports integration with Dify custom workflows. The system is modular, with each node responsible for a specific step in the test case generation process, and exposes a FastAPI-based HTTP API for orchestration.
 
+**Key Features:**
+
+- **Multi-language Support**: Full Japanese and English localization
+- **Professional Test Viewpoints**: Industry-standard test viewpoint templates
+- **Multi-format Input**: Support for JSON, CSV, and Excel test viewpoint files
+- **Excel Output**: Professional Japanese Excel test case output
+- **LLM Integration**: Configurable prompt templates and few-shot examples
+- **Quality Assurance**: Built-in test viewpoint validation and quality analysis
+
 ## Directory Structure
 
 ```
@@ -28,7 +37,13 @@ langgraph_workflow/
     llm_client.py        # LLM API client abstraction (OpenAI, Claude, Gemini, etc.)
     param_utils.py       # File upload helpers
     prompt_loader.py     # Prompt template loader
+    localization.py      # Multi-language localization manager
+    viewpoints_parser.py # Multi-format test viewpoint parser
     db.py                # (Optional) Postgres session/result persistence
+  templates/
+    viewpoints_template_ja.json  # Japanese test viewpoint templates
+    viewpoints_template_en.json  # English test viewpoint templates
+    viewpoints_template_ja.xlsx  # Japanese Excel template structure
   README.md
 ```
 
@@ -74,10 +89,21 @@ Each node in the workflow is exposed as an HTTP endpoint. Example endpoints:
   - Generate cross-page flow test cases
 - `POST /run_node/format_output/`  
   - File: `testcases`  
-  - Form: `output_format` (csv/md/yaml)  
-  - Format output for download or display
+  - Form: `output_format` (excel/csv/md/yaml), `language` (ja/en)  
+  - Format output for download or display (Excel as binary download)
 - `GET /intermediate/{node_name}`  
   - Retrieve intermediate results by node name
+- `POST /parse_viewpoints/`  
+  - File: `viewpoints_file` (JSON/CSV/Excel)  
+  - Form: `file_extension` (optional)  
+  - Parse and validate test viewpoint files
+- `GET /viewpoints/formats`  
+  - Get supported viewpoint file formats and examples
+- `GET /system/language`  
+  - Get current system language settings
+- `POST /system/language`  
+  - Form: `language` (ja/en)  
+  - Set system language
 
 > For batch workflow, see `run_workflow` in `workflow.py` or integrate via Dify using `config.dify-workflow.json`.
 
@@ -87,11 +113,47 @@ The workflow consists of the following steps:
 
 1. **Fetch and Clean Figma JSON**: Download and clean the Figma file JSON using API credentials.
 2. **Load Page Structure**: Parse the Figma YAML/JSON to extract the page/component structure.
-3. **Match Viewpoints**: For each component, match relevant test viewpoints from a provided database.
+3. **Match Viewpoints**: For each component, match relevant test viewpoints from a provided database (supports JSON, CSV, Excel formats).
 4. **Generate Test Cases**: Use LLMs to generate structured test cases for each component-viewpoint pair, with support for prompt templates and few-shot examples.
 5. **Route Inference**: Analyze the page/component structure to infer navigation and flow chains.
 6. **Generate Cross-Page Cases**: Use LLMs to generate end-to-end test cases that span multiple pages/routes.
-7. **Format Output**: Output the generated test cases in CSV, Markdown, or YAML format for downstream consumption.
+7. **Format Output**: Output the generated test cases in Excel (default), CSV, Markdown, or YAML format with full localization support.
+
+## Multi-language Support
+
+The system supports both Japanese (ja) and English (en) languages:
+
+- **Localization Manager**: Centralized text management in `utils/localization.py`
+- **Prompt Templates**: Japanese and English prompts in `prompt_templates.yaml`
+- **Test Viewpoints**: Professional templates in both languages
+- **Excel Output**: Fully localized Japanese Excel files with proper formatting
+- **Date/Time Formatting**: Japanese date format (YYYY年MM月DD日) and English format (YYYY-MM-DD)
+
+## Test Viewpoint Management
+
+### Supported Formats
+
+- **JSON**: Structured viewpoint data with metadata
+- **CSV**: Professional test viewpoint templates
+- **Excel**: Industry-standard Excel templates with checklists
+
+### Professional Templates
+
+The system includes professional test viewpoint templates covering:
+
+- **Functional Testing**: Component behavior, form validation, navigation
+- **Performance Testing**: Response time, loading states
+- **Security Testing**: Input validation, data integrity
+- **Compatibility Testing**: Cross-browser, responsive design
+- **Accessibility Testing**: Screen reader support, keyboard navigation
+- **UX Testing**: User experience, visual feedback
+
+### Quality Features
+
+- **Validation**: Built-in viewpoint data validation
+- **Format Detection**: Automatic file format detection
+- **Error Handling**: Comprehensive error messages in both languages
+- **Examples**: Format examples and best practices
 
 Each step can be invoked independently via API, or orchestrated as a batch via the workflow script or Dify integration.
 
