@@ -17,6 +17,7 @@ from nodes.process_historical_cases import process_historical_cases_node
 from nodes.extract_test_patterns import extract_test_patterns_node
 from nodes.analyze_differences import analyze_differences_node
 from nodes.evaluate_coverage import evaluate_coverage_node
+from nodes.create_semantic_correlation_map import create_semantic_correlation_map
 from utils.llm_client import LLMClient
 from utils.llm_client_factory import LLMClientFactory
 
@@ -32,6 +33,7 @@ def build_enhanced_workflow(use_historical_cases: bool = False):
     # 添加基础节点
     workflow.add_node("analyze_viewpoints_modules", analyze_viewpoints_modules)
     workflow.add_node("map_figma_to_viewpoints", map_figma_to_viewpoints)
+    workflow.add_node("create_semantic_correlation_map", create_semantic_correlation_map)
     workflow.add_node("map_checklist_to_figma_areas", map_checklist_to_figma_areas)
     workflow.add_node("validate_test_purpose_coverage", validate_test_purpose_coverage)
     workflow.add_node("deep_understanding_and_gap_analysis", deep_understanding_and_gap_analysis)
@@ -55,7 +57,8 @@ def build_enhanced_workflow(use_historical_cases: bool = False):
         
         # 基础流程
         workflow.add_edge("analyze_viewpoints_modules", "map_figma_to_viewpoints")
-        workflow.add_edge("map_figma_to_viewpoints", "map_checklist_to_figma_areas")
+        workflow.add_edge("map_figma_to_viewpoints", "create_semantic_correlation_map")
+        workflow.add_edge("create_semantic_correlation_map", "map_checklist_to_figma_areas")
         workflow.add_edge("map_checklist_to_figma_areas", "validate_test_purpose_coverage")
         
         # 差异分析和覆盖率评估
@@ -69,7 +72,8 @@ def build_enhanced_workflow(use_historical_cases: bool = False):
         workflow.set_entry_point("analyze_viewpoints_modules")
         
         workflow.add_edge("analyze_viewpoints_modules", "map_figma_to_viewpoints")
-        workflow.add_edge("map_figma_to_viewpoints", "map_checklist_to_figma_areas")
+        workflow.add_edge("map_figma_to_viewpoints", "create_semantic_correlation_map")
+        workflow.add_edge("create_semantic_correlation_map", "map_checklist_to_figma_areas")
         workflow.add_edge("map_checklist_to_figma_areas", "validate_test_purpose_coverage")
         workflow.add_edge("validate_test_purpose_coverage", "deep_understanding_and_gap_analysis")
         workflow.add_edge("deep_understanding_and_gap_analysis", "generate_final_testcases")
@@ -109,6 +113,11 @@ def map_figma_to_viewpoints_wrapper(state: Dict[str, Any]):
     """包装器函数，用于LangGraph节点调用"""
     llm_client = LLMClientFactory.create_agent_client("map_figma_to_viewpoints")
     return map_figma_to_viewpoints(state, llm_client)
+
+def create_semantic_correlation_map_wrapper(state: Dict[str, Any]):
+    """包装器函数，用于LangGraph节点调用"""
+    llm_client = LLMClientFactory.create_agent_client("create_semantic_correlation_map")
+    return create_semantic_correlation_map(state, llm_client)
 
 def map_checklist_to_figma_areas_wrapper(state: Dict[str, Any]):
     """包装器函数，用于LangGraph节点调用"""
@@ -162,6 +171,7 @@ def build_enhanced_workflow_with_wrappers(use_historical_cases: bool = False):
     # 添加基础节点（使用包装器）
     workflow.add_node("analyze_viewpoints_modules", analyze_viewpoints_modules_wrapper)
     workflow.add_node("map_figma_to_viewpoints", map_figma_to_viewpoints_wrapper)
+    workflow.add_node("create_semantic_correlation_map", create_semantic_correlation_map_wrapper)
     workflow.add_node("map_checklist_to_figma_areas", map_checklist_to_figma_areas_wrapper)
     workflow.add_node("validate_test_purpose_coverage", validate_test_purpose_coverage_wrapper)
     workflow.add_node("deep_understanding_and_gap_analysis", deep_understanding_and_gap_analysis_wrapper)
@@ -185,7 +195,8 @@ def build_enhanced_workflow_with_wrappers(use_historical_cases: bool = False):
         
         # 基础流程
         workflow.add_edge("analyze_viewpoints_modules", "map_figma_to_viewpoints")
-        workflow.add_edge("map_figma_to_viewpoints", "map_checklist_to_figma_areas")
+        workflow.add_edge("map_figma_to_viewpoints", "create_semantic_correlation_map")
+        workflow.add_edge("create_semantic_correlation_map", "map_checklist_to_figma_areas")
         workflow.add_edge("map_checklist_to_figma_areas", "validate_test_purpose_coverage")
         
         # 差异分析和覆盖率评估
@@ -199,7 +210,8 @@ def build_enhanced_workflow_with_wrappers(use_historical_cases: bool = False):
         workflow.set_entry_point("analyze_viewpoints_modules")
         
         workflow.add_edge("analyze_viewpoints_modules", "map_figma_to_viewpoints")
-        workflow.add_edge("map_figma_to_viewpoints", "map_checklist_to_figma_areas")
+        workflow.add_edge("map_figma_to_viewpoints", "create_semantic_correlation_map")
+        workflow.add_edge("create_semantic_correlation_map", "map_checklist_to_figma_areas")
         workflow.add_edge("map_checklist_to_figma_areas", "validate_test_purpose_coverage")
         workflow.add_edge("validate_test_purpose_coverage", "deep_understanding_and_gap_analysis")
         workflow.add_edge("deep_understanding_and_gap_analysis", "generate_final_testcases")

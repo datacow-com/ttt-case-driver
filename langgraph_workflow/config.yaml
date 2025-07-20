@@ -101,6 +101,14 @@ llm_agents:
     max_tokens: 1024
     fallback_providers: ["anthropic", "google"]
     
+  # 语义关联映射节点 - 使用Claude进行深度语义分析
+  create_semantic_correlation_map:
+    provider: "anthropic"
+    model: "claude-3-sonnet"
+    temperature: 0.1
+    max_tokens: 2048
+    fallback_providers: ["openai", "google"]
+    
   # 生成ノード - GPT-4を使用した創造的生成
   generate_testcases:
     provider: "openai"

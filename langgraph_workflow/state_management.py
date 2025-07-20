@@ -11,6 +11,7 @@ class TestCaseState(TypedDict):
     historical_patterns: Optional[Dict[str, Any]]  # 新增：历史测试模式（可选）
     difference_report: Optional[Dict[str, Any]]  # 新增：差异报告（可选）
     coverage_report: Optional[Dict[str, Any]]  # 新增：覆盖率报告（可选）
+    semantic_correlation_map: Optional[Dict[str, Any]]  # 新增：语义关联图谱（可选）
     modules_analysis: Dict[str, Any]
     figma_viewpoints_mapping: Dict[str, Any]
     checklist_mapping: List[Dict[str, Any]]
@@ -34,6 +35,7 @@ class StateManager:
             historical_patterns=None,
             difference_report=None,
             coverage_report=None,
+            semantic_correlation_map=None,  # 初始化语义关联图谱为None
             modules_analysis={},
             figma_viewpoints_mapping={},
             checklist_mapping=[],
@@ -121,4 +123,32 @@ class StateManager:
         if cache_key not in cache_keys:
             cache_keys.append(cache_key)
             cache_metadata[f"{cache_type}_cache_keys"] = cache_keys
-        return {**state, 'cache_metadata': cache_metadata} 
+        return {**state, 'cache_metadata': cache_metadata}
+    
+    @staticmethod
+    def save_semantic_correlation_map(workflow_id: str, correlation_map: Dict[str, Any], ttl: int = 7200) -> bool:
+        """保存语义关联映射到Redis
+        
+        Args:
+            workflow_id: 工作流ID
+            correlation_map: 语义关联图谱
+            ttl: 过期时间（秒）
+            
+        Returns:
+            bool: 是否保存成功
+        """
+        key = f"semantic_correlation_map_{workflow_id}"
+        return redis_manager.set_cache(key, correlation_map, ttl)
+    
+    @staticmethod
+    def get_semantic_correlation_map(workflow_id: str) -> Optional[Dict[str, Any]]:
+        """从Redis获取语义关联映射
+        
+        Args:
+            workflow_id: 工作流ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 语义关联图谱，如果不存在则返回None
+        """
+        key = f"semantic_correlation_map_{workflow_id}"
+        return redis_manager.get_cache(key) 

@@ -271,6 +271,29 @@
 						"selected_frames": "{{#if selected_frames}}{{selected_frames}}{{else}}null{{/if}}"
 					}
 				},
+				"next": "create_semantic_correlation_map"
+			},
+
+			"create_semantic_correlation_map": {
+				"type": "http",
+				"priority": "high",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/create_semantic_correlation_map/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"figma_data_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
+						"viewpoints_cache_id": "{{process_viewpoints.response.cache_id}}",
+						"historical_patterns_cache_id": "{{#if extract_test_patterns.response}}{{extract_test_patterns.response.cache_id}}{{else}}null{{/if}}",
+						"agent_config": {
+							"provider": "anthropic",
+							"model": "claude-3-sonnet",
+							"temperature": 0.1
+						}
+					}
+				},
 				"next": "generate_testcases"
 			},
 
@@ -285,6 +308,7 @@
 					},
 					"body": {
 						"component_viewpoints_cache_id": "{{match_viewpoints.response.cache_id}}",
+						"semantic_correlation_map_cache_id": "{{create_semantic_correlation_map.response.cache_id}}",
 						"agent_config": {
 							"provider": "openai",
 							"api_key": "{{api_key}}",

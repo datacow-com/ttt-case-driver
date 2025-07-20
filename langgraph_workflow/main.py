@@ -12,6 +12,7 @@ from nodes.route_infer import route_infer
 from nodes.generate_cross_page_case import generate_cross_page_case
 from nodes.format_output import format_output
 from nodes.fetch_and_clean_figma_json import fetch_and_clean_figma_json, get_compression_stats, get_cache_stats
+from nodes.create_semantic_correlation_map import create_semantic_correlation_map
 from utils.enhanced_config_loader import config_loader
 from utils.llm_client_factory import SmartLLMClient, LLMClientFactory
 from utils.config_validator import ConfigValidator
@@ -707,6 +708,7 @@ async def run_node_match_viewpoints(
 async def run_node_generate_testcases(
     component_viewpoints: UploadFile = None,
     component_viewpoints_cache_id: str = Form(None),
+    semantic_correlation_map_cache_id: str = Form(None),
     agent_name: str = Form("generate_testcases"),
     provider: str = Form(None),
     model: str = Form(None),
@@ -730,6 +732,11 @@ async def run_node_generate_testcases(
         component_viewpoints_obj = json.load(component_viewpoints.file)
     else:
         raise HTTPException(status_code=400, detail="必须提供组件-观点映射数据或缓存ID")
+    
+    # 获取语义关联映射（如果有）
+    semantic_correlation_map = None
+    if semantic_correlation_map_cache_id:
+        semantic_correlation_map = redis_manager.get_cache(semantic_correlation_map_cache_id)
     
     # カスタム設定が提供されている場合、SmartLLMClientを作成
     llm_client = None
@@ -761,6 +768,16 @@ async def run_node_generate_testcases(
     resources = PRIORITY_RESOURCES.get(priority, {"max_workers": 4, "timeout": 120})
     actual_max_workers = resources["max_workers"] if parallel else 1
     
+    # 创建初始状态
+    initial_state = {
+        "viewpoints_file": component_viewpoints_obj.get("viewpoints", {}),
+        "figma_data": component_viewpoints_obj.get("figma_data", {})
+    }
+    
+    # 如果有语义关联映射，添加到状态
+    if semantic_correlation_map:
+        initial_state["semantic_correlation_map"] = semantic_correlation_map
+    
     # ノードを実行
     result = generate_testcases(
         component_viewpoints_obj, 
@@ -789,7 +806,8 @@ async def run_node_generate_testcases(
             "priority": priority,
             "parallel": parallel,
             "max_workers": actual_max_workers,
-            "incremental": incremental
+            "incremental": incremental,
+            "used_semantic_correlation": semantic_correlation_map is not None
         }
     })
 
@@ -1630,6 +1648,80 @@ async def run_enhanced_workflow_with_history(
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"运行增强工作流失败: {str(e)}")
+
+@app.post("/run_node/create_semantic_correlation_map/")
+async def run_node_create_semantic_correlation_map(
+    figma_data_cache_id: str = Form(None),
+    viewpoints_cache_id: str = Form(None),
+    historical_patterns_cache_id: str = Form(None),
+    figma_data: UploadFile = None,
+    viewpoints_file: UploadFile = None,
+    historical_patterns: UploadFile = None,
+    agent_name: str = Form("create_semantic_correlation_map"),
+    provider: str = Form(None),
+    model: str = Form(None),
+    temperature: float = Form(None),
+    max_tokens: int = Form(None),
+    priority: str = Form(PRIORITY_HIGH)
+):
+    """创建语义关联映射节点"""
+    # 从缓存或上传文件获取数据
+    figma_data_obj = await get_data_from_cache_or_file(figma_data_cache_id, figma_data)
+    viewpoints_obj = await get_data_from_cache_or_file(viewpoints_cache_id, viewpoints_file)
+    historical_patterns_obj = await get_data_from_cache_or_file(historical_patterns_cache_id, historical_patterns)
+    
+    # 创建LLM客户端
+    llm_client = SmartLLMClient(
+        provider=provider or config_loader.get_agent_config(agent_name).provider,
+        model=model or config_loader.get_agent_config(agent_name).model,
+        temperature=temperature or config_loader.get_agent_config(agent_name).temperature,
+        max_tokens=max_tokens or config_loader.get_agent_config(agent_name).max_tokens
+    )
+    
+    # 创建初始状态
+    initial_state = {
+        "figma_data": figma_data_obj,
+        "viewpoints_file": viewpoints_obj
+    }
+    
+    if historical_patterns_obj:
+        initial_state["historical_patterns"] = historical_patterns_obj
+    
+    # 运行节点
+    result_state = create_semantic_correlation_map(initial_state, llm_client)
+    
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result_state["semantic_correlation_map"], "semantic_correlation_map")
+    
+    # 保存中间结果
+    INTERMEDIATE_RESULTS['create_semantic_correlation_map'] = result_state["semantic_correlation_map"]
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result_state["semantic_correlation_map"],
+        "cache_id": result_cache_id,
+        "metadata": {
+            "component_mappings": len(result_state["semantic_correlation_map"]["component_test_mapping"]),
+            "criterion_mappings": len(result_state["semantic_correlation_map"].get("criterion_pattern_mapping", {})),
+            "navigation_mappings": len(result_state["semantic_correlation_map"]["navigation_scenario_mapping"])
+        }
+    })
+
+async def get_data_from_cache_or_file(cache_id, file):
+    """从缓存或上传文件获取数据"""
+    if cache_id:
+        data = redis_manager.get_cache(cache_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="缓存数据未找到")
+        return data
+    elif file:
+        content = await file.read()
+        try:
+            return json.loads(content)
+        except:
+            raise HTTPException(status_code=400, detail="无效的JSON文件")
+    else:
+        return None
 
 if __name__ == "__main__":
     import uvicorn
