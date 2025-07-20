@@ -31,10 +31,24 @@
 							"required": false,
 							"default": false,
 							"description": "手动选择需要测试的Frame（勾选后将显示Frame列表供选择）"
+						},
+						{
+							"name": "enable_priority_evaluation",
+							"type": "checkbox",
+							"required": false,
+							"default": true,
+							"description": "启用测试观点优先级动态评估"
+						},
+						{
+							"name": "enable_classification",
+							"type": "checkbox",
+							"required": false,
+							"default": true,
+							"description": "启用测试观点多维度分类"
 						}
 					]
 				},
-				"next": "load_page"
+				"next": ["load_page", "process_viewpoints"]
 			},
 
 			"load_page": {
@@ -54,8 +68,27 @@
 				"next": {
 					"condition": "{{manual_frame_selection}}",
 					"true": "select_frames",
-					"false": ["match_viewpoints", "route_infer"]
+					"false": "wait_for_parallel_input"
 				}
+			},
+
+			"process_viewpoints": {
+				"type": "http",
+				"priority": "high",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/parse_viewpoints/",
+					"headers": {
+						"Content-Type": "multipart/form-data"
+					},
+					"body": {
+						"viewpoints_file": "{{viewpoints_file}}",
+						"enable_standardization": true,
+						"enable_priority_evaluation": "{{enable_priority_evaluation}}",
+						"enable_classification": "{{enable_classification}}"
+					}
+				},
+				"next": "wait_for_parallel_input"
 			},
 
 			"select_frames": {
@@ -96,7 +129,21 @@
 						"selected_frames": "{{selected_frames}}"
 					}
 				},
-				"next": ["match_viewpoints", "route_infer"]
+				"next": "wait_for_parallel_input"
+			},
+
+			"wait_for_parallel_input": {
+				"type": "condition",
+				"priority": "high",
+				"data": {
+					"conditions": [
+						{
+							"condition": "({{process_viewpoints.response}} != null) && (({{process_selected_frames.response}} != null) || ({{load_page.response}} != null && !{{manual_frame_selection}}))",
+							"next": ["match_viewpoints", "route_infer"]
+						}
+					],
+					"default": "wait_for_parallel_input"
+				}
 			},
 
 			"match_viewpoints": {
@@ -110,7 +157,8 @@
 					},
 					"body": {
 						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
-						"viewpoints": "{{viewpoints_file.content}}"
+						"viewpoints_processed": "{{process_viewpoints.response.viewpoints}}",
+						"selected_frames": "{{#if selected_frames}}{{selected_frames}}{{else}}null{{/if}}"
 					}
 				},
 				"next": "generate_testcases"
@@ -190,7 +238,7 @@
 						}
 					}
 				},
-				"next": "format_output"
+				"next": ["format_output", "show_viewpoints_analysis"]
 			},
 
 			"format_output": {
@@ -218,6 +266,17 @@
 					"description": "以下是从Figma自动生成的结构化测试用例",
 					"display_type": "markdown",
 					"content": "{{format_output.response.content}}"
+				}
+			},
+
+			"show_viewpoints_analysis": {
+				"type": "output",
+				"priority": "low",
+				"data": {
+					"title": "测试观点分析结果",
+					"description": "测试观点的优先级和分类分析结果",
+					"display_type": "json",
+					"content": "{{process_viewpoints.response.metadata}}"
 				}
 			}
 		}

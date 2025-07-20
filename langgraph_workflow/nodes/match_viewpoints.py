@@ -4,6 +4,7 @@ from utils.cache_manager import cache_llm_call, cache_manager
 from utils.llm_client_factory import SmartLLMClient
 import hashlib
 import json
+from datetime import datetime
 
 def build_prompt(system_prompt: str, few_shot_examples: list, current_input: str) -> str:
     """プロンプトを構築する"""
@@ -15,9 +16,19 @@ def build_prompt(system_prompt: str, few_shot_examples: list, current_input: str
 
 def generate_cache_key(clean_json: Dict, viewpoints_db: Dict, agent_name: str, selected_frames: Optional[List[str]] = None) -> str:
     """キャッシュキーを生成する"""
+    # 提取测试观点的基本信息，忽略可能变化的元数据
+    viewpoints_core = {}
+    if isinstance(viewpoints_db, dict):
+        # 如果是处理后的测试观点数据，可能包含metadata字段
+        if "viewpoints" in viewpoints_db and "metadata" in viewpoints_db:
+            viewpoints_core = viewpoints_db["viewpoints"]
+        else:
+            # 传统格式，直接使用
+            viewpoints_core = viewpoints_db
+    
     content = {
         "clean_json": clean_json,
-        "viewpoints_db": viewpoints_db,
+        "viewpoints_db": viewpoints_core,
         "agent_name": agent_name,
         "selected_frames": selected_frames
     }
@@ -42,6 +53,11 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any],
     Returns:
         コンポーネントと観点のマッピング
     """
+    # 处理测试观点数据，支持新格式
+    actual_viewpoints = viewpoints_db
+    if isinstance(viewpoints_db, dict) and "viewpoints" in viewpoints_db and "metadata" in viewpoints_db:
+        actual_viewpoints = viewpoints_db["viewpoints"]
+    
     # キャッシュキーを生成
     cache_key = generate_cache_key(clean_json, viewpoints_db, agent_name, selected_frames)
     
@@ -69,7 +85,7 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any],
     # 入力データを準備
     current_input = json.dumps({
         "components": filtered_json,
-        "viewpoints": viewpoints_db
+        "viewpoints": actual_viewpoints
     }, ensure_ascii=False)
     
     # プロンプトを構築
@@ -88,6 +104,13 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any],
     except Exception:
         # JSONとして解析できない場合は生のテキストを返す
         parsed_result = {"raw_result": result if isinstance(result, str) else str(result)}
+    
+    # 结果中添加优先级和分类信息（如果原始数据中包含）
+    if isinstance(viewpoints_db, dict) and "metadata" in viewpoints_db:
+        parsed_result["metadata"] = {
+            "viewpoints_analysis": viewpoints_db["metadata"],
+            "processing_time": datetime.now().isoformat()
+        }
     
     # 結果をキャッシュ
     cache_manager.set(cache_key, parsed_result, ttl=3600)

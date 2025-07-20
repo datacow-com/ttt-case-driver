@@ -9,6 +9,8 @@ import re
 from functools import lru_cache
 import concurrent.futures
 from collections import defaultdict
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==================== 1. 智能批处理策略 ====================
 
@@ -542,97 +544,133 @@ def filter_components(components: List[Dict], changed_component_ids: List[str] =
     
     return filtered_components
 
-@cache_llm_call(ttl=3600)
-def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None, 
-                      prompt_template: str = None, few_shot_examples: list = None,
-                      agent_name: str = "generate_testcases",
-                      incremental: bool = False,
-                      changed_component_ids: List[str] = None,
-                      parallel: bool = True,
-                      max_workers: int = 4) -> List[Dict[str, Any]]:
+def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None, prompt_template: str = None, 
+                     few_shot_examples: list = None, agent_name: str = "generate_testcases", 
+                     incremental: bool = False, changed_component_ids: List[str] = None,
+                     parallel: bool = True, max_workers: int = 4) -> Dict[str, Any]:
     """
-    优化的测试用例生成，支持智能批处理、高效缓存和并行处理
+    生成测试用例
     
     Args:
-        component_viewpoints: 组件和观点的映射
-        llm_client: LLM客户端（未指定时创建）
+        component_viewpoints: 组件和测试观点的映射
+        llm_client: LLM客户端
         prompt_template: 自定义提示模板
         few_shot_examples: Few-shot学习示例
-        agent_name: 代理名称（用于从配置加载）
-        incremental: 是否启用增量处理
-        changed_component_ids: 变更的组件ID列表，用于增量处理
-        parallel: 是否启用并行处理
-        max_workers: 最大并行工作线程数
+        agent_name: 代理名称（用于从配置中加载）
+        incremental: 是否增量生成
+        changed_component_ids: 变更的组件ID列表
+        parallel: 是否并行处理
+        max_workers: 最大工作线程数
         
     Returns:
-        生成的测试用例列表
+        生成的测试用例
     """
-    # 生成缓存键
-    cache_key = generate_cache_key(component_viewpoints, agent_name)
+    # 检查是否有优先级和分类信息
+    has_priority_info = False
+    has_classification_info = False
     
-    # 检查缓存（非增量处理时）
-    if not incremental:
-        cached_result = cache_manager.get(cache_key)
-        if cached_result is not None:
-            return cached_result
+    # 提取组件和观点数据
+    components_data = component_viewpoints.get("components", [])
+    viewpoints_data = component_viewpoints.get("viewpoints", {})
+    
+    # 检查是否包含元数据
+    metadata = component_viewpoints.get("metadata", {})
+    if metadata and "viewpoints_analysis" in metadata:
+        has_priority_info = "priority_stats" in metadata["viewpoints_analysis"]
+        has_classification_info = "classification_stats" in metadata["viewpoints_analysis"]
     
     # 准备LLM客户端
     if llm_client is None:
         llm_client = SmartLLMClient(agent_name)
     
-    components = component_viewpoints.get('component_viewpoints', [])
+    # 获取提示模板
+    prompt_manager = PromptManager()
+    node_prompt = prompt_manager.get_prompt('generate_testcases')
+    system_prompt = prompt_template or node_prompt.get('system_prompt', '')
+    few_shot = few_shot_examples or node_prompt.get('few_shot_examples', [])
     
-    # 增量处理：过滤组件
+    # 增量处理逻辑
     if incremental and changed_component_ids:
-        original_count = len(components)
-        components = filter_components(components, changed_component_ids)
-        filtered_count = len(components)
-        print(f"增量处理：从{original_count}个组件中过滤出{filtered_count}个组件")
+        # 过滤只处理变更的组件
+        filtered_components = [c for c in components_data if c.get("id") in changed_component_ids]
+        components_data = filtered_components
     
-    # 使用智能批处理策略（支持并行处理）
-    result = smart_batch_processing(
-        components, 
-        llm_client, 
-        prompt_template, 
-        few_shot_examples, 
-        agent_name,
-        max_workers=max_workers,
-        parallel=parallel
-    )
-    
-    # 增量处理：合并结果
-    if incremental and changed_component_ids:
-        # 获取之前的结果
-        previous_result = cache_manager.get(cache_key)
-        if previous_result:
-            # 创建组件ID到测试用例的映射
-            result_map = {item['component_id']: item for item in result}
-            
-            # 合并结果
-            merged_result = []
-            for item in previous_result:
-                comp_id = item['component_id']
-                if comp_id in result_map:
-                    # 使用新结果替换
-                    merged_result.append(result_map[comp_id])
-                    # 从结果映射中移除，以便后续添加未匹配的新结果
-                    del result_map[comp_id]
+    # 根据优先级对组件进行排序
+    if has_priority_info and components_data:
+        # 为每个组件计算优先级分数
+        for component in components_data:
+            component_id = component.get("id", "")
+            if "viewpoints" in component:
+                # 计算平均优先级分数
+                priority_score = 0
+                total_viewpoints = 0
+                
+                for vp in component["viewpoints"]:
+                    if isinstance(vp, dict) and "priority" in vp:
+                        priority = vp["priority"]
+                        if priority == "HIGH":
+                            priority_score += 3
+                        elif priority == "MEDIUM":
+                            priority_score += 2
+                        elif priority == "LOW":
+                            priority_score += 1
+                        total_viewpoints += 1
+                
+                if total_viewpoints > 0:
+                    component["priority_score"] = priority_score / total_viewpoints
                 else:
-                    # 保留原结果
-                    merged_result.append(item)
-            
-            # 添加未匹配的新结果
-            for item in result_map.values():
-                merged_result.append(item)
-            
-            result = merged_result
+                    component["priority_score"] = 1  # 默认中等优先级
+            else:
+                component["priority_score"] = 1  # 默认中等优先级
+        
+        # 按优先级分数排序，高分优先
+        components_data.sort(key=lambda x: x.get("priority_score", 1), reverse=True)
     
-    # 动态设置缓存TTL（根据数据量和复杂度）
-    complexity = len(components) * sum(len(item['viewpoints']) for item in components)
-    dynamic_ttl = min(7200, max(1800, 3600 + (complexity // 10) * 100))  # 基础3600秒，根据复杂度调整
+    # 并行处理逻辑
+    if parallel and len(components_data) > 1:
+        # 创建线程池
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交任务
+            future_to_component = {
+                executor.submit(
+                    generate_component_testcase, 
+                    component, 
+                    llm_client, 
+                    system_prompt, 
+                    few_shot
+                ): component for component in components_data
+            }
+            
+            # 收集结果
+            testcases = []
+            for future in as_completed(future_to_component):
+                component = future_to_component[future]
+                try:
+                    testcase = future.result()
+                    if testcase:
+                        testcases.append(testcase)
+                except Exception as e:
+                    print(f"组件 {component.get('id')} 生成测试用例时出错: {str(e)}")
+    else:
+        # 串行处理
+        testcases = []
+        for component in components_data:
+            testcase = generate_component_testcase(component, llm_client, system_prompt, few_shot)
+            if testcase:
+                testcases.append(testcase)
     
-    # 缓存结果
-    cache_manager.set(cache_key, result, ttl=dynamic_ttl)
+    # 添加元数据
+    result = {
+        "testcases": testcases,
+        "metadata": {
+            "total_testcases": len(testcases),
+            "generation_time": datetime.now().isoformat()
+        }
+    }
+    
+    # 如果有优先级和分类信息，添加到结果中
+    if has_priority_info or has_classification_info:
+        result["metadata"]["viewpoints_analysis"] = metadata.get("viewpoints_analysis", {})
     
     return result
 
@@ -656,3 +694,86 @@ def batch_process_components(components: List[Dict], llm_client=None, prompt_tem
     
     # 解析批处理结果
     return parse_batch_result(batch_result, components)
+
+def generate_component_testcase(component: Dict[str, Any], llm_client, system_prompt: str, few_shot_examples: list) -> Dict[str, Any]:
+    """
+    为单个组件生成测试用例
+    
+    Args:
+        component: 组件数据
+        llm_client: LLM客户端
+        system_prompt: 系统提示
+        few_shot_examples: Few-shot学习示例
+        
+    Returns:
+        组件的测试用例
+    """
+    try:
+        # 提取组件信息
+        component_id = component.get("id", "")
+        component_name = component.get("name", "")
+        component_type = component.get("type", "")
+        viewpoints = component.get("viewpoints", [])
+        
+        # 如果没有测试观点，跳过
+        if not viewpoints:
+            return None
+        
+        # 构建提示
+        prompt = f"{system_prompt}\n\n"
+        
+        # 添加Few-shot示例
+        for ex in few_shot_examples:
+            prompt += f"Example Input:\n{ex.get('input', '')}\nExample Output:\n{ex.get('output', '')}\n\n"
+        
+        # 构建当前输入
+        current_input = {
+            "component": {
+                "id": component_id,
+                "name": component_name,
+                "type": component_type,
+                "properties": component.get("properties", {})
+            },
+            "viewpoints": viewpoints
+        }
+        
+        # 添加优先级信息（如果有）
+        if "priority_score" in component:
+            current_input["priority_score"] = component["priority_score"]
+        
+        prompt += f"Current Input:\n{json.dumps(current_input, ensure_ascii=False)}\nOutput:"
+        
+        # 调用LLM
+        result = llm_client.generate_sync(prompt)
+        
+        # 解析结果
+        try:
+            if isinstance(result, dict) and "content" in result:
+                content = result["content"]
+                parsed_result = json.loads(content)
+            else:
+                parsed_result = json.loads(result)
+                
+            # 确保结果包含必要字段
+            if not isinstance(parsed_result, dict):
+                parsed_result = {"testcases": parsed_result}
+            
+            # 添加组件信息
+            parsed_result["component_id"] = component_id
+            parsed_result["component_name"] = component_name
+            parsed_result["component_type"] = component_type
+            
+            return parsed_result
+        except Exception as e:
+            print(f"解析组件 {component_id} 的测试用例结果时出错: {str(e)}")
+            # 返回基本结果
+            return {
+                "component_id": component_id,
+                "component_name": component_name,
+                "component_type": component_type,
+                "error": str(e),
+                "raw_result": result if isinstance(result, str) else str(result)
+            }
+    except Exception as e:
+        print(f"为组件 {component.get('id', 'unknown')} 生成测试用例时出错: {str(e)}")
+        return None

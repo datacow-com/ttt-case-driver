@@ -629,6 +629,7 @@ async def run_node_match_viewpoints(
     clean_json_cache_id: str = Form(None),
     viewpoints_db: UploadFile = None,
     viewpoints_db_cache_id: str = Form(None),
+    viewpoints_processed: Dict[str, Any] = Body(None),
     selected_frames: List[str] = Form(None),
     agent_name: str = Form("match_viewpoints"),
     provider: str = Form(None),
@@ -648,15 +649,18 @@ async def run_node_match_viewpoints(
         clean_json_obj = json.load(clean_json.file)
     else:
         raise HTTPException(status_code=400, detail="必须提供页面结构数据或缓存ID")
-        
-    if viewpoints_db_cache_id:
+    
+    # 获取测试观点数据，优先使用处理后的数据
+    if viewpoints_processed:
+        viewpoints_db_obj = viewpoints_processed
+    elif viewpoints_db_cache_id:
         viewpoints_db_obj = redis_manager.get_cache(viewpoints_db_cache_id)
         if not viewpoints_db_obj:
             raise HTTPException(status_code=404, detail="缓存的测试观点数据未找到")
     elif viewpoints_db:
         viewpoints_db_obj = json.load(viewpoints_db.file)
     else:
-        raise HTTPException(status_code=400, detail="必须提供测试观点数据或缓存ID")
+        raise HTTPException(status_code=400, detail="必须提供测试观点数据")
     
     # カスタム設定が提供されている場合、SmartLLMClientを作成
     llm_client = None
@@ -751,14 +755,11 @@ async def run_node_generate_testcases(
         try:
             changed_ids = json.loads(changed_component_ids)
         except:
-            # 尝试以逗号分隔的字符串解析
-            changed_ids = [id.strip() for id in changed_component_ids.split(",") if id.strip()]
+            changed_ids = None
     
     # 根据优先级分配资源
-    resources = process_with_priority(
-        priority=priority,
-        max_workers=max_workers
-    )
+    resources = PRIORITY_RESOURCES.get(priority, {"max_workers": 4, "timeout": 120})
+    actual_max_workers = resources["max_workers"] if parallel else 1
     
     # ノードを実行
     result = generate_testcases(
@@ -770,7 +771,7 @@ async def run_node_generate_testcases(
         incremental=incremental,
         changed_component_ids=changed_ids,
         parallel=parallel,
-        max_workers=resources["max_workers"]
+        max_workers=actual_max_workers
     )
     
     # 缓存结果并生成缓存ID
@@ -782,7 +783,14 @@ async def run_node_generate_testcases(
     # 返回结果和缓存ID
     return JSONResponse({
         "content": result,
-        "cache_id": result_cache_id
+        "cache_id": result_cache_id,
+        "metadata": {
+            "testcases_count": len(result.get("testcases", [])),
+            "priority": priority,
+            "parallel": parallel,
+            "max_workers": actual_max_workers,
+            "incremental": incremental
+        }
     })
 
 @app.post("/run_node/route_infer/")
@@ -869,17 +877,17 @@ async def run_node_generate_cross_page_case(
     few_shot_examples: str = Form(None),
     priority: str = Form(PRIORITY_MEDIUM)
 ):
-    """クロスページケース生成ノードを実行"""
+    """跨页面テストケース生成ノードを実行"""
     # 从缓存或上传文件获取数据
     if routes_cache_id:
         routes_obj = redis_manager.get_cache(routes_cache_id)
         if not routes_obj:
-            raise HTTPException(status_code=404, detail="缓存的路由信息未找到")
+            raise HTTPException(status_code=404, detail="缓存的路由数据未找到")
     elif routes:
         routes_obj = json.load(routes.file)
     else:
-        raise HTTPException(status_code=400, detail="必须提供路由信息或缓存ID")
-        
+        raise HTTPException(status_code=400, detail="必须提供路由数据或缓存ID")
+    
     if testcases_cache_id:
         testcases_obj = redis_manager.get_cache(testcases_cache_id)
         if not testcases_obj:
@@ -908,30 +916,20 @@ async def run_node_generate_cross_page_case(
             few_shot = None
     
     # 根据优先级分配资源
-    resources = process_with_priority(priority=priority)
+    resources = PRIORITY_RESOURCES.get(priority, {"max_workers": 4, "timeout": 120})
     
-    # ノードを実行（添加超时处理）
-    try:
-        # 设置超时
-        timeout = resources.get("timeout", 120)
-        # 创建一个异步任务
-        result_task = asyncio.create_task(
-            asyncio.wait_for(
-                asyncio.to_thread(generate_cross_page_case, routes_obj, testcases_obj, llm_client),
-                timeout=timeout
-            )
-        )
-        # 等待任务完成
-        result = await result_task
-    except asyncio.TimeoutError:
-        # 超时处理
-        raise HTTPException(status_code=408, detail=f"处理超时（{timeout}秒）")
-    except Exception as e:
-        # 其他异常处理
-        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+    # ノードを実行
+    result = generate_cross_page_case(
+        routes_obj, 
+        testcases_obj, 
+        llm_client=llm_client,
+        prompt_template=prompt_template,
+        few_shot_examples=few_shot,
+        agent_name=agent_name
+    )
     
     # 缓存结果并生成缓存ID
-    result_cache_id = cache_node_data(result, "cross_page_case_result")
+    result_cache_id = cache_node_data(result, "generate_cross_page_case_result")
     
     # 保存中间结果
     INTERMEDIATE_RESULTS['generate_cross_page_case'] = result
@@ -939,7 +937,12 @@ async def run_node_generate_cross_page_case(
     # 返回结果和缓存ID
     return JSONResponse({
         "content": result,
-        "cache_id": result_cache_id
+        "cache_id": result_cache_id,
+        "metadata": {
+            "priority": priority,
+            "agent_name": agent_name,
+            "has_priority_info": "metadata" in result and "viewpoints_analysis" in result.get("metadata", {})
+        }
     })
 
 @app.post("/run_node/format_output/")
