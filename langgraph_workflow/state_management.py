@@ -18,6 +18,10 @@ class TestCaseState(TypedDict):
     test_purpose_validation: List[Dict[str, Any]]
     quality_analysis: Dict[str, Any]
     final_testcases: List[Dict[str, Any]]
+    quality_metrics: Optional[List[Dict[str, Any]]]  # 新增：测试用例质量指标
+    overall_quality: Optional[Dict[str, Any]]  # 新增：整体质量评估
+    optimization_logs: Optional[List[Dict[str, Any]]]  # 新增：优化日志
+    optimization_round: Optional[int]  # 新增：当前优化轮次
     workflow_log: List[str]
     cache_metadata: Dict[str, Any]  # 新增：缓存元数据
 
@@ -42,6 +46,10 @@ class StateManager:
             test_purpose_validation=[],
             quality_analysis={},
             final_testcases=[],
+            quality_metrics=[],  # 初始化测试用例质量指标为空列表
+            overall_quality={},  # 初始化整体质量评估为空字典
+            optimization_logs=[],  # 初始化优化日志为空列表
+            optimization_round=0,  # 初始化当前优化轮次为0
             workflow_log=[],
             cache_metadata={
                 "figma_cache_keys": [],
@@ -151,4 +159,32 @@ class StateManager:
             Optional[Dict[str, Any]]: 语义关联图谱，如果不存在则返回None
         """
         key = f"semantic_correlation_map_{workflow_id}"
+        return redis_manager.get_cache(key)
+    
+    @staticmethod
+    def save_quality_metrics(workflow_id: str, quality_metrics: List[Dict[str, Any]], ttl: int = 7200) -> bool:
+        """保存测试用例质量指标到Redis
+        
+        Args:
+            workflow_id: 工作流ID
+            quality_metrics: 测试用例质量指标
+            ttl: 过期时间（秒）
+            
+        Returns:
+            bool: 是否保存成功
+        """
+        key = f"quality_metrics_{workflow_id}"
+        return redis_manager.set_cache(key, quality_metrics, ttl)
+    
+    @staticmethod
+    def get_quality_metrics(workflow_id: str) -> Optional[List[Dict[str, Any]]]:
+        """从Redis获取测试用例质量指标
+        
+        Args:
+            workflow_id: 工作流ID
+            
+        Returns:
+            Optional[List[Dict[str, Any]]]: 测试用例质量指标，如果不存在则返回None
+        """
+        key = f"quality_metrics_{workflow_id}"
         return redis_manager.get_cache(key) 

@@ -18,8 +18,11 @@ from nodes.extract_test_patterns import extract_test_patterns_node
 from nodes.analyze_differences import analyze_differences_node
 from nodes.evaluate_coverage import evaluate_coverage_node
 from nodes.create_semantic_correlation_map import create_semantic_correlation_map
+from nodes.evaluate_testcase_quality import evaluate_testcase_quality
+from nodes.optimize_testcases import optimize_testcases
 from utils.llm_client import LLMClient
 from utils.llm_client_factory import LLMClientFactory
+from utils.retry_controller import RetryController
 
 def build_enhanced_workflow(use_historical_cases: bool = False):
     """构建增强的测试用例生成工作流
@@ -38,6 +41,10 @@ def build_enhanced_workflow(use_historical_cases: bool = False):
     workflow.add_node("validate_test_purpose_coverage", validate_test_purpose_coverage)
     workflow.add_node("deep_understanding_and_gap_analysis", deep_understanding_and_gap_analysis)
     workflow.add_node("generate_final_testcases", generate_final_testcases)
+    
+    # 添加测试用例质量评估和优化节点
+    workflow.add_node("evaluate_testcase_quality", evaluate_testcase_quality)
+    workflow.add_node("optimize_testcases", optimize_testcases)
     
     # 添加历史测试用例处理节点
     if use_historical_cases:
@@ -78,7 +85,17 @@ def build_enhanced_workflow(use_historical_cases: bool = False):
         workflow.add_edge("validate_test_purpose_coverage", "deep_understanding_and_gap_analysis")
         workflow.add_edge("deep_understanding_and_gap_analysis", "generate_final_testcases")
     
-    workflow.add_edge("generate_final_testcases", END)
+    # 添加质量评估和优化流程
+    workflow.add_edge("generate_final_testcases", "evaluate_testcase_quality")
+    
+    # 添加条件分支：根据质量评估结果决定是否需要优化
+    workflow.add_conditional_edges(
+        "evaluate_testcase_quality",
+        lambda state: "optimize_testcases" if state.get("overall_quality", {}).get("improvement_needed", False) else END
+    )
+    
+    # 添加优化后的循环：优化后重新评估
+    workflow.add_edge("optimize_testcases", "evaluate_testcase_quality")
     
     return workflow.compile()
 
@@ -139,6 +156,16 @@ def generate_final_testcases_wrapper(state: Dict[str, Any]):
     llm_client = LLMClientFactory.create_agent_client("generate_testcases")
     return generate_final_testcases(state, llm_client)
 
+def evaluate_testcase_quality_wrapper(state: Dict[str, Any]):
+    """包装器函数，用于LangGraph节点调用"""
+    llm_client = LLMClientFactory.create_agent_client("evaluate_testcase_quality")
+    return evaluate_testcase_quality(state, llm_client)
+
+def optimize_testcases_wrapper(state: Dict[str, Any]):
+    """包装器函数，用于LangGraph节点调用"""
+    llm_client = LLMClientFactory.create_agent_client("optimize_testcases")
+    return optimize_testcases(state, llm_client)
+
 def process_historical_cases_wrapper(state: Dict[str, Any]):
     """包装器函数，用于LangGraph节点调用"""
     llm_client = LLMClientFactory.create_agent_client("process_historical_cases")
@@ -176,6 +203,10 @@ def build_enhanced_workflow_with_wrappers(use_historical_cases: bool = False):
     workflow.add_node("validate_test_purpose_coverage", validate_test_purpose_coverage_wrapper)
     workflow.add_node("deep_understanding_and_gap_analysis", deep_understanding_and_gap_analysis_wrapper)
     workflow.add_node("generate_final_testcases", generate_final_testcases_wrapper)
+    
+    # 添加测试用例质量评估和优化节点（使用包装器）
+    workflow.add_node("evaluate_testcase_quality", evaluate_testcase_quality_wrapper)
+    workflow.add_node("optimize_testcases", optimize_testcases_wrapper)
     
     # 添加历史测试用例处理节点（使用包装器）
     if use_historical_cases:
@@ -216,6 +247,16 @@ def build_enhanced_workflow_with_wrappers(use_historical_cases: bool = False):
         workflow.add_edge("validate_test_purpose_coverage", "deep_understanding_and_gap_analysis")
         workflow.add_edge("deep_understanding_and_gap_analysis", "generate_final_testcases")
     
-    workflow.add_edge("generate_final_testcases", END)
+    # 添加质量评估和优化流程
+    workflow.add_edge("generate_final_testcases", "evaluate_testcase_quality")
+    
+    # 添加条件分支：根据质量评估结果决定是否需要优化
+    workflow.add_conditional_edges(
+        "evaluate_testcase_quality",
+        lambda state: "optimize_testcases" if state.get("overall_quality", {}).get("improvement_needed", False) else END
+    )
+    
+    # 添加优化后的循环：优化后重新评估
+    workflow.add_edge("optimize_testcases", "evaluate_testcase_quality")
     
     return workflow.compile() 

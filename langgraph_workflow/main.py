@@ -30,6 +30,9 @@ import yaml
 from typing import Any, List, Dict
 import uuid
 import asyncio
+from nodes.evaluate_testcase_quality import evaluate_testcase_quality
+from nodes.optimize_testcases import optimize_testcases
+from utils.retry_controller import RetryController
 
 # 任务优先级常量
 PRIORITY_HIGH = "high"
@@ -1722,6 +1725,206 @@ async def get_data_from_cache_or_file(cache_id, file):
             raise HTTPException(status_code=400, detail="无效的JSON文件")
     else:
         return None
+
+# 添加测试用例质量评估API端点
+@app.post("/run_node/evaluate_testcase_quality/")
+async def run_node_evaluate_testcase_quality(
+    testcases: UploadFile = None,
+    testcases_cache_id: str = Form(None),
+    agent_name: str = Form("evaluate_testcase_quality"),
+    provider: str = Form(None),
+    model: str = Form(None),
+    temperature: float = Form(None),
+    max_tokens: int = Form(None),
+    priority: str = Form(PRIORITY_MEDIUM)
+):
+    """运行测试用例质量评估节点"""
+    # 获取测试用例数据
+    testcases_obj = None
+    if testcases:
+        testcases_obj = await parse_upload_file(testcases)
+    elif testcases_cache_id:
+        testcases_obj = get_cached_data(testcases_cache_id)
+    
+    if not testcases_obj:
+        raise HTTPException(status_code=400, detail="未提供测试用例数据")
+    
+    # 创建LLM客户端
+    llm_client = create_llm_client(agent_name, provider, model, temperature, max_tokens)
+    
+    # 创建初始状态
+    initial_state = {
+        "final_testcases": testcases_obj.get("testcases", []),
+        "figma_data": testcases_obj.get("figma_data", {}),
+        "viewpoints_file": testcases_obj.get("viewpoints_file", {})
+    }
+    
+    # 根据优先级分配资源
+    resources = PRIORITY_RESOURCES.get(priority, {"max_workers": 2, "timeout": 60})
+    
+    # 运行节点
+    result = evaluate_testcase_quality(initial_state, llm_client)
+    
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "evaluate_testcase_quality_result")
+    
+    # 保存中间结果
+    INTERMEDIATE_RESULTS['evaluate_testcase_quality'] = result
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id,
+        "metadata": {
+            "quality_metrics_count": len(result.get("quality_metrics", [])),
+            "average_quality_score": result.get("overall_quality", {}).get("average_quality_score", 0),
+            "improvement_needed": result.get("overall_quality", {}).get("improvement_needed", False)
+        }
+    })
+
+# 添加测试用例优化API端点
+@app.post("/run_node/optimize_testcases/")
+async def run_node_optimize_testcases(
+    testcases: UploadFile = None,
+    testcases_cache_id: str = Form(None),
+    quality_metrics: UploadFile = None,
+    quality_metrics_cache_id: str = Form(None),
+    agent_name: str = Form("optimize_testcases"),
+    provider: str = Form(None),
+    model: str = Form(None),
+    temperature: float = Form(None),
+    max_tokens: int = Form(None),
+    priority: str = Form(PRIORITY_MEDIUM)
+):
+    """运行测试用例优化节点"""
+    # 获取测试用例数据
+    testcases_obj = None
+    if testcases:
+        testcases_obj = await parse_upload_file(testcases)
+    elif testcases_cache_id:
+        testcases_obj = get_cached_data(testcases_cache_id)
+    
+    if not testcases_obj:
+        raise HTTPException(status_code=400, detail="未提供测试用例数据")
+    
+    # 获取质量指标数据
+    quality_metrics_obj = None
+    if quality_metrics:
+        quality_metrics_obj = await parse_upload_file(quality_metrics)
+    elif quality_metrics_cache_id:
+        quality_metrics_obj = get_cached_data(quality_metrics_cache_id)
+    
+    if not quality_metrics_obj:
+        raise HTTPException(status_code=400, detail="未提供质量指标数据")
+    
+    # 创建LLM客户端
+    llm_client = create_llm_client(agent_name, provider, model, temperature, max_tokens)
+    
+    # 创建初始状态
+    initial_state = {
+        "final_testcases": testcases_obj.get("testcases", []),
+        "quality_metrics": quality_metrics_obj.get("quality_metrics", []),
+        "overall_quality": quality_metrics_obj.get("overall_quality", {}),
+        "optimization_round": 0
+    }
+    
+    # 根据优先级分配资源
+    resources = PRIORITY_RESOURCES.get(priority, {"max_workers": 2, "timeout": 120})
+    
+    # 运行节点
+    result = optimize_testcases(initial_state, llm_client)
+    
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "optimize_testcases_result")
+    
+    # 保存中间结果
+    INTERMEDIATE_RESULTS['optimize_testcases'] = result
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id,
+        "metadata": {
+            "testcases_count": len(result.get("final_testcases", [])),
+            "optimization_round": result.get("optimization_round", 0),
+            "optimization_logs_count": len(result.get("optimization_logs", []))
+        }
+    })
+
+# 添加批量测试用例质量评估和优化API端点
+@app.post("/run_workflow/evaluate_and_optimize/")
+async def run_workflow_evaluate_and_optimize(
+    testcases: UploadFile = None,
+    testcases_cache_id: str = Form(None),
+    max_retries: int = Form(3),
+    quality_threshold: float = Form(0.7),
+    provider: str = Form(None),
+    model: str = Form(None),
+    temperature: float = Form(None),
+    max_tokens: int = Form(None),
+    priority: str = Form(PRIORITY_HIGH)
+):
+    """运行测试用例质量评估和优化工作流"""
+    # 获取测试用例数据
+    testcases_obj = None
+    if testcases:
+        testcases_obj = await parse_upload_file(testcases)
+    elif testcases_cache_id:
+        testcases_obj = get_cached_data(testcases_cache_id)
+    
+    if not testcases_obj:
+        raise HTTPException(status_code=400, detail="未提供测试用例数据")
+    
+    # 创建LLM客户端
+    evaluate_client = create_llm_client("evaluate_testcase_quality", provider, model, temperature, max_tokens)
+    optimize_client = create_llm_client("optimize_testcases", provider, model, temperature, max_tokens)
+    
+    # 创建初始状态
+    initial_state = {
+        "final_testcases": testcases_obj.get("testcases", []),
+        "figma_data": testcases_obj.get("figma_data", {}),
+        "viewpoints_file": testcases_obj.get("viewpoints_file", {}),
+        "optimization_round": 0
+    }
+    
+    # 创建重试控制器
+    retry_controller = RetryController(
+        max_retries=max_retries,
+        quality_threshold=quality_threshold
+    )
+    
+    # 定义评估和优化函数
+    def evaluate_and_optimize(state):
+        # 评估测试用例质量
+        evaluated_state = evaluate_testcase_quality(state, evaluate_client)
+        
+        # 检查是否需要优化
+        if evaluated_state.get("overall_quality", {}).get("improvement_needed", False):
+            # 优化测试用例
+            optimized_state = optimize_testcases(evaluated_state, optimize_client)
+            return optimized_state
+        else:
+            return evaluated_state
+    
+    # 使用重试控制器执行评估和优化
+    result = retry_controller.execute_with_retry(evaluate_and_optimize, initial_state)
+    
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "evaluate_and_optimize_result")
+    
+    # 保存中间结果
+    INTERMEDIATE_RESULTS['evaluate_and_optimize'] = result
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id,
+        "metadata": {
+            "testcases_count": len(result.get("final_testcases", [])),
+            "average_quality_score": result.get("overall_quality", {}).get("average_quality_score", 0),
+            "optimization_round": result.get("optimization_round", 0)
+        }
+    })
 
 if __name__ == "__main__":
     import uvicorn
