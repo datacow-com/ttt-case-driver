@@ -7,6 +7,10 @@ class TestCaseState(TypedDict):
     """测试用例生成状态管理"""
     figma_data: Dict[str, Any]
     viewpoints_file: Dict[str, Any]
+    historical_cases: Optional[Dict[str, Any]]  # 新增：历史测试用例（可选）
+    historical_patterns: Optional[Dict[str, Any]]  # 新增：历史测试模式（可选）
+    difference_report: Optional[Dict[str, Any]]  # 新增：差异报告（可选）
+    coverage_report: Optional[Dict[str, Any]]  # 新增：覆盖率报告（可选）
     modules_analysis: Dict[str, Any]
     figma_viewpoints_mapping: Dict[str, Any]
     checklist_mapping: List[Dict[str, Any]]
@@ -20,11 +24,16 @@ class StateManager:
     """状态管理器 - 基于Redis"""
     
     @staticmethod
-    def create_initial_state(figma_data: Dict[str, Any], viewpoints_file: Dict[str, Any]) -> TestCaseState:
+    def create_initial_state(figma_data: Dict[str, Any], viewpoints_file: Dict[str, Any], 
+                            historical_cases: Optional[Dict[str, Any]] = None) -> TestCaseState:
         """创建初始状态"""
         return TestCaseState(
             figma_data=figma_data,
             viewpoints_file=viewpoints_file,
+            historical_cases=historical_cases,
+            historical_patterns=None,
+            difference_report=None,
+            coverage_report=None,
             modules_analysis={},
             figma_viewpoints_mapping={},
             checklist_mapping=[],
@@ -35,6 +44,7 @@ class StateManager:
             cache_metadata={
                 "figma_cache_keys": [],
                 "viewpoints_cache_keys": [],
+                "historical_cache_keys": [] if historical_cases else None,
                 "llm_cache_keys": [],
                 "created_at": datetime.now().isoformat()
             }

@@ -1318,6 +1318,319 @@ async def run_enhanced_workflow_step(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ステップ実行エラー: {str(e)}")
 
+@app.post("/parse_historical_cases/")
+async def parse_historical_cases(
+    historical_cases_files: List[UploadFile] = None,
+    file_extensions: str = Form(None),  # 逗号分隔的扩展名列表
+    enable_standardization: bool = Form(True)
+):
+    """解析历史测试用例文件 - 支持多文件"""
+    try:
+        # 处理文件扩展名列表
+        ext_list = None
+        if file_extensions:
+            ext_list = [ext.strip() for ext in file_extensions.split(',')]
+        
+        # 如果没有提供文件，返回空结果
+        if not historical_cases_files:
+            return {
+                "status": "success",
+                "message": "未提供历史测试用例文件",
+                "cases": {},
+                "cache_id": "",
+                "stats": {
+                    "total_cases": 0,
+                    "file_count": 0,
+                    "component_types": {},
+                    "action_types": {},
+                    "category_types": {}
+                }
+            }
+        
+        # 如果只有一个文件，使用单文件处理
+        if len(historical_cases_files) == 1:
+            file = historical_cases_files[0]
+            file_content = await file.read()
+            filename = file.filename
+            
+            # 如果未提供文件扩展名，则从文件名中提取
+            file_extension = None
+            if ext_list and len(ext_list) > 0:
+                file_extension = ext_list[0]
+            elif filename and '.' in filename:
+                file_extension = filename.split('.')[-1].lower()
+            
+            from nodes.process_historical_cases import process_historical_cases
+            
+            # 解析历史测试用例
+            result = process_historical_cases(
+                file_content=file_content, 
+                file_extension=file_extension, 
+                filename=filename,
+                enable_standardization=enable_standardization
+            )
+        else:
+            # 多文件处理
+            file_contents = []
+            filenames = []
+            
+            # 读取所有文件内容
+            for file in historical_cases_files:
+                file_contents.append(await file.read())
+                filenames.append(file.filename)
+            
+            # 如果未提供文件扩展名列表，则从文件名中提取
+            if not ext_list:
+                ext_list = []
+                for name in filenames:
+                    if name and '.' in name:
+                        ext_list.append(name.split('.')[-1].lower())
+                    else:
+                        ext_list.append(None)
+            
+            # 确保扩展名列表长度匹配
+            while len(ext_list) < len(file_contents):
+                ext_list.append(None)
+            
+            from nodes.process_historical_cases import process_historical_cases
+            
+            # 解析历史测试用例
+            result = process_historical_cases(
+                multiple_files=file_contents,
+                file_extensions=ext_list,
+                filenames=filenames,
+                enable_standardization=enable_standardization
+            )
+        
+        return {
+            "status": "success",
+            "message": f"成功解析历史测试用例，共 {len(result['cases'])} 条，来自 {result['stats']['file_count']} 个文件",
+            "cases": result['cases'],
+            "cache_id": result['cache_id'],
+            "stats": result['stats']
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"历史测试用例解析失败: {str(e)}")
+
+@app.post("/extract_test_patterns/")
+async def extract_test_patterns(
+    standardized_cases: Dict[str, Any] = Body(...),
+    cache_key_prefix: str = Form(None)
+):
+    """从标准化历史用例中提取测试模式"""
+    try:
+        from nodes.extract_test_patterns import extract_test_patterns
+        
+        # 提取测试模式
+        result = extract_test_patterns(standardized_cases, cache_key_prefix)
+        
+        return {
+            "status": "success",
+            "message": f"成功提取测试模式，共 {result['stats']['total_patterns']} 个模式",
+            "pattern_library": result['pattern_library'],
+            "cache_id": result['cache_id'],
+            "stats": result['stats']
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"提取测试模式失败: {str(e)}")
+
+@app.post("/analyze_differences/")
+async def analyze_differences(
+    figma_data: Dict[str, Any] = Body(None),
+    figma_cache_id: str = Form(None),
+    historical_patterns: Dict[str, Any] = Body(None),
+    patterns_cache_id: str = Form(None)
+):
+    """分析Figma设计与历史测试模式的差异"""
+    try:
+        # 获取Figma数据
+        figma_to_process = None
+        if figma_data:
+            figma_to_process = figma_data
+        elif figma_cache_id:
+            figma_to_process = intelligent_cache_manager.get_with_intelligence(figma_cache_id)
+            if not figma_to_process:
+                raise HTTPException(status_code=404, detail=f"未找到缓存的Figma数据: {figma_cache_id}")
+        else:
+            raise HTTPException(status_code=400, detail="未提供Figma数据或缓存ID")
+        
+        # 获取历史测试模式
+        patterns_to_process = None
+        if historical_patterns:
+            patterns_to_process = historical_patterns
+        elif patterns_cache_id:
+            patterns_to_process = intelligent_cache_manager.get_with_intelligence(patterns_cache_id)
+            if not patterns_to_process:
+                raise HTTPException(status_code=404, detail=f"未找到缓存的测试模式: {patterns_cache_id}")
+        else:
+            raise HTTPException(status_code=400, detail="未提供历史测试模式或缓存ID")
+        
+        from nodes.analyze_differences import analyze_differences
+        
+        # 分析差异
+        result = analyze_differences(figma_to_process, patterns_to_process, patterns_cache_id)
+        
+        return {
+            "status": "success",
+            "message": f"成功分析差异，发现 {result['stats']['new_component_count']} 个新组件，{result['stats']['modified_component_count']} 个修改组件",
+            "difference_report": result['difference_report'],
+            "cache_id": result['cache_id'],
+            "stats": result['stats']
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"分析差异失败: {str(e)}")
+
+@app.post("/evaluate_coverage/")
+async def evaluate_coverage(
+    viewpoints: Dict[str, Any] = Body(None),
+    viewpoints_cache_id: str = Form(None),
+    difference_report: Dict[str, Any] = Body(None),
+    difference_cache_id: str = Form(None),
+    pattern_library: Dict[str, Any] = Body(None),
+    patterns_cache_id: str = Form(None)
+):
+    """评估测试观点覆盖率"""
+    try:
+        # 获取测试观点
+        viewpoints_to_process = None
+        if viewpoints:
+            viewpoints_to_process = viewpoints
+        elif viewpoints_cache_id:
+            viewpoints_to_process = intelligent_cache_manager.get_with_intelligence(viewpoints_cache_id)
+            if not viewpoints_to_process:
+                raise HTTPException(status_code=404, detail=f"未找到缓存的测试观点: {viewpoints_cache_id}")
+        else:
+            raise HTTPException(status_code=400, detail="未提供测试观点或缓存ID")
+        
+        # 获取差异报告
+        diff_report_to_process = None
+        if difference_report:
+            diff_report_to_process = difference_report
+        elif difference_cache_id:
+            diff_report_to_process = intelligent_cache_manager.get_with_intelligence(difference_cache_id)
+            if not diff_report_to_process:
+                raise HTTPException(status_code=404, detail=f"未找到缓存的差异报告: {difference_cache_id}")
+        else:
+            raise HTTPException(status_code=400, detail="未提供差异报告或缓存ID")
+        
+        # 获取测试模式库
+        patterns_to_process = None
+        if pattern_library:
+            patterns_to_process = pattern_library
+        elif patterns_cache_id:
+            patterns_to_process = intelligent_cache_manager.get_with_intelligence(patterns_cache_id)
+            if not patterns_to_process:
+                raise HTTPException(status_code=404, detail=f"未找到缓存的测试模式库: {patterns_cache_id}")
+        else:
+            raise HTTPException(status_code=400, detail="未提供测试模式库或缓存ID")
+        
+        from nodes.evaluate_coverage import evaluate_coverage
+        
+        # 评估覆盖率
+        result = evaluate_coverage(viewpoints_to_process, diff_report_to_process, patterns_to_process, patterns_cache_id)
+        
+        # 计算覆盖率百分比
+        coverage_score = result['stats'].get('overall_coverage_score', 0.0)
+        coverage_percentage = f"{coverage_score * 100:.1f}%"
+        
+        return {
+            "status": "success",
+            "message": f"成功评估覆盖率，总体覆盖率 {coverage_percentage}，发现 {result['stats']['gap_count']} 个覆盖缺口",
+            "coverage_report": result['coverage_report'],
+            "cache_id": result['cache_id'],
+            "stats": result['stats']
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"评估覆盖率失败: {str(e)}")
+
+@app.post("/run_enhanced_workflow_with_history/")
+async def run_enhanced_workflow_with_history(
+    figma_file: UploadFile,
+    viewpoints_file: UploadFile,
+    historical_cases_files: List[UploadFile] = None,
+    agent_name: str = Form("match_viewpoints"),
+    provider: str = Form(None),
+    model: str = Form(None),
+    temperature: float = Form(None),
+    max_tokens: int = Form(None)
+):
+    """运行带历史测试用例的增强工作流 - 支持多个历史测试用例文件"""
+    try:
+        # 读取Figma文件
+        figma_content = await figma_file.read()
+        figma_filename = figma_file.filename
+        
+        # 读取测试观点文件
+        viewpoints_content = await viewpoints_file.read()
+        viewpoints_filename = viewpoints_file.filename
+        
+        # 解析文件
+        figma_data = json.loads(figma_content)
+        
+        # 解析测试观点
+        viewpoints_ext = viewpoints_filename.split('.')[-1].lower() if '.' in viewpoints_filename else ''
+        from utils.viewpoints_parser import ViewpointsParser
+        viewpoints = ViewpointsParser.parse_viewpoints(viewpoints_content, viewpoints_ext, viewpoints_filename)
+        
+        # 处理历史测试用例文件
+        historical_cases = {}
+        if historical_cases_files:
+            # 读取所有历史测试用例文件
+            file_contents = []
+            filenames = []
+            file_extensions = []
+            
+            for file in historical_cases_files:
+                file_contents.append(await file.read())
+                filename = file.filename
+                filenames.append(filename)
+                if filename and '.' in filename:
+                    file_extensions.append(filename.split('.')[-1].lower())
+                else:
+                    file_extensions.append(None)
+            
+            # 解析历史测试用例
+            from nodes.process_historical_cases import process_historical_cases
+            historical_result = process_historical_cases(
+                multiple_files=file_contents,
+                file_extensions=file_extensions,
+                filenames=filenames
+            )
+            historical_cases = historical_result['cases']
+        
+        # 创建LLM客户端
+        llm_client = SmartLLMClient(
+            provider=provider or config_loader.get_agent_config(agent_name).provider,
+            model=model or config_loader.get_agent_config(agent_name).model,
+            temperature=temperature or config_loader.get_agent_config(agent_name).temperature,
+            max_tokens=max_tokens or config_loader.get_agent_config(agent_name).max_tokens
+        )
+        
+        # 创建工作流ID
+        workflow_id = f"workflow_{uuid.uuid4()}"
+        
+        # 运行增强工作流
+        from enhanced_workflow import run_enhanced_testcase_generation
+        result = run_enhanced_testcase_generation(figma_data, viewpoints, llm_client, historical_cases)
+        
+        # 保存工作流状态
+        StateManager.save_workflow_state(workflow_id, result)
+        
+        return {
+            "status": "success",
+            "message": "成功运行增强工作流",
+            "workflow_id": workflow_id,
+            "final_testcases": result.get('final_testcases', []),
+            "workflow_log": result.get('workflow_log', [])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"运行增强工作流失败: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

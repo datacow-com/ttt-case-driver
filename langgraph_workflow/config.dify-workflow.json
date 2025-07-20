@@ -20,10 +20,10 @@
 							"description": "上传测试观点（viewpoints.yaml / JSON）"
 						},
 						{
-							"name": "history_cases_file",
-							"type": "file",
+							"name": "history_cases_files",
+							"type": "files",
 							"required": false,
-							"description": "上传历史测试用例（可选，JSON/CSV）"
+							"description": "上传历史测试用例（可选，支持多文件，JSON/CSV/Excel）"
 						},
 						{
 							"name": "manual_frame_selection",
@@ -48,7 +48,7 @@
 						}
 					]
 				},
-				"next": ["load_page", "process_viewpoints"]
+				"next": ["load_page", "process_viewpoints", "process_historical_cases"]
 			},
 
 			"load_page": {
@@ -146,6 +146,116 @@
 				}
 			},
 
+			"process_historical_cases": {
+				"type": "http",
+				"priority": "high",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/parse_historical_cases/",
+					"headers": {
+						"Content-Type": "multipart/form-data"
+					},
+					"body": {
+						"historical_cases_files": "{{history_cases_files}}",
+						"enable_standardization": true
+					}
+				},
+				"next": "extract_test_patterns"
+			},
+
+			"extract_test_patterns": {
+				"type": "http",
+				"priority": "high",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/extract_test_patterns/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"standardized_cases": "{{process_historical_cases.response.cases}}"
+					}
+				},
+				"next": "wait_for_historical_parallel"
+			},
+
+			"wait_for_historical_parallel": {
+				"type": "condition",
+				"priority": "high",
+				"data": {
+					"conditions": [
+						{
+							"condition": "({{process_viewpoints.response}} != null) && (({{process_selected_frames.response}} != null) || ({{load_page.response}} != null && !{{manual_frame_selection}})) && ({{extract_test_patterns.response}} != null)",
+							"next": ["match_viewpoints", "route_infer", "analyze_differences"]
+						}
+					],
+					"default": "wait_for_historical_parallel"
+				}
+			},
+
+			"analyze_differences": {
+				"type": "http",
+				"priority": "medium",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/analyze_differences/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"figma_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
+						"patterns_cache_id": "{{extract_test_patterns.response.cache_id}}"
+					}
+				},
+				"next": "wait_for_testcases"
+			},
+
+			"wait_for_testcases": {
+				"type": "condition",
+				"priority": "high",
+				"data": {
+					"conditions": [
+						{
+							"condition": "{{generate_testcases.response}} != null && {{analyze_differences.response}} != null",
+							"next": "evaluate_coverage"
+						}
+					],
+					"default": "wait_for_testcases"
+				}
+			},
+
+			"evaluate_coverage": {
+				"type": "http",
+				"priority": "medium",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/evaluate_coverage/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"viewpoints_cache_id": "{{process_viewpoints.response.cache_id}}",
+						"difference_cache_id": "{{analyze_differences.response.cache_id}}",
+						"patterns_cache_id": "{{extract_test_patterns.response.cache_id}}"
+					}
+				},
+				"next": "wait_for_evaluation"
+			},
+
+			"wait_for_evaluation": {
+				"type": "condition",
+				"priority": "high",
+				"data": {
+					"conditions": [
+						{
+							"condition": "{{evaluate_coverage.response}} != null && {{route_infer.response}} != null",
+							"next": "generate_cross_page_case"
+						}
+					],
+					"default": "wait_for_evaluation"
+				}
+			},
+
 			"match_viewpoints": {
 				"type": "http",
 				"priority": "high",
@@ -210,7 +320,7 @@
 				"data": {
 					"conditions": [
 						{
-							"condition": "{{generate_testcases.response}} != null && {{route_infer.response}} != null",
+							"condition": "{{generate_testcases.response}} != null && {{route_infer.response}} != null && ({{history_cases_files.length}} == 0 || {{evaluate_coverage.response}} != null)",
 							"next": "generate_cross_page_case"
 						}
 					],
@@ -238,7 +348,11 @@
 						}
 					}
 				},
-				"next": ["format_output", "show_viewpoints_analysis"]
+				"next": [
+					"format_output",
+					"show_viewpoints_analysis",
+					"show_coverage_analysis"
+				]
 			},
 
 			"format_output": {
@@ -277,6 +391,17 @@
 					"description": "测试观点的优先级和分类分析结果",
 					"display_type": "json",
 					"content": "{{process_viewpoints.response.metadata}}"
+				}
+			},
+
+			"show_coverage_analysis": {
+				"type": "output",
+				"priority": "low",
+				"data": {
+					"title": "覆盖率评估结果",
+					"description": "基于历史测试用例的覆盖率评估结果",
+					"display_type": "json",
+					"content": "{{#if evaluate_coverage.response}}{{evaluate_coverage.response.coverage_report}}{{else}}无覆盖率评估数据{{/if}}"
 				}
 			}
 		}
