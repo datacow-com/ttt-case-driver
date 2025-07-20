@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Set
 import json
 import re
 from collections import defaultdict
+from datetime import datetime
 
 class ViewpointsStandardizer:
     """测试观点标准化工具 - 提高复用性和一致性"""
@@ -41,6 +42,50 @@ class ViewpointsStandardizer:
             "security": ["安全性", "セキュリティ", "security", "安全"],
             "compatibility": ["兼容性", "互換性", "compatibility", "适配"],
             "error_handling": ["错误处理", "エラーハンドリング", "error handling", "异常处理"]
+        }
+        
+        # 关键功能词汇，用于优先级评估
+        self.critical_keywords = {
+            "HIGH": [
+                "登录", "注册", "支付", "结算", "安全", "数据", "提交", "保存",
+                "login", "register", "payment", "checkout", "security", "data", "submit", "save",
+                "验证", "确认", "核心", "必须", "关键",
+                "validation", "confirm", "core", "must", "critical"
+            ],
+            "MEDIUM": [
+                "显示", "展示", "查看", "搜索", "筛选", "排序", "更新",
+                "display", "view", "search", "filter", "sort", "update",
+                "交互", "操作", "选择", "修改", 
+                "interaction", "operation", "select", "modify"
+            ],
+            "LOW": [
+                "提示", "帮助", "辅助", "建议", "可选", "次要",
+                "hint", "help", "auxiliary", "suggestion", "optional", "secondary"
+            ]
+        }
+        
+        # 测试类型分类关键词
+        self.category_keywords = {
+            "Functional": [
+                "功能", "操作", "点击", "输入", "提交", "验证", "保存", "加载", "处理",
+                "function", "operation", "click", "input", "submit", "validate", "save", "load", "process"
+            ],
+            "UI/UX": [
+                "界面", "布局", "样式", "颜色", "字体", "间距", "对齐", "响应式", "交互", "体验",
+                "ui", "layout", "style", "color", "font", "spacing", "alignment", "responsive", "interaction", "experience"
+            ],
+            "Performance": [
+                "性能", "速度", "响应时间", "加载时间", "渲染", "效率", "资源占用",
+                "performance", "speed", "response time", "loading time", "rendering", "efficiency", "resource usage"
+            ],
+            "Security": [
+                "安全", "权限", "认证", "授权", "加密", "保护", "漏洞", "攻击",
+                "security", "permission", "authentication", "authorization", "encryption", "protection", "vulnerability", "attack"
+            ],
+            "Accessibility": [
+                "可访问性", "无障碍", "屏幕阅读器", "键盘导航", "对比度", "焦点",
+                "accessibility", "screen reader", "keyboard navigation", "contrast", "focus"
+            ]
         }
         
         self.viewpoint_templates = {
@@ -139,6 +184,18 @@ class ViewpointsStandardizer:
                     std_viewpoint = self._standardize_viewpoint_dict(viewpoint)
                 else:
                     std_viewpoint = self._standardize_viewpoint_string(str(viewpoint))
+                
+                # 增强功能：动态评估优先级
+                context = {
+                    "component_type": std_component_type,
+                    "is_in_main_user_flow": self._is_in_main_user_flow(std_component_type),
+                    "has_previous_issues": False  # 这里可以集成历史问题数据
+                }
+                std_viewpoint["priority"] = self.evaluate_viewpoint_priority(std_viewpoint, context)
+                
+                # 增强功能：多维度分类
+                std_viewpoint["classifications"] = self.classify_viewpoint(std_viewpoint)
+                
                 std_viewpoints.append(std_viewpoint)
             
             standardized[std_component_type] = std_viewpoints
@@ -190,6 +247,121 @@ class ViewpointsStandardizer:
             standardized["viewpoint"] = std_viewpoint_name
         
         return standardized
+    
+    def evaluate_viewpoint_priority(self, viewpoint: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """基于多维度因素动态评估测试观点优先级"""
+        # 基础优先级（来自模板或用户输入）
+        base_priority = viewpoint.get("priority", "MEDIUM")
+        
+        # 如果已经是HIGH优先级，直接返回
+        if base_priority == "HIGH":
+            return "HIGH"
+        
+        viewpoint_text = viewpoint.get("viewpoint", "").lower()
+        category = viewpoint.get("category", "Functional")
+        
+        # 1. 基于关键词评估
+        for priority, keywords in self.critical_keywords.items():
+            if any(keyword.lower() in viewpoint_text for keyword in keywords):
+                if priority == "HIGH":  # 如果找到高优先级关键词，直接返回HIGH
+                    return "HIGH"
+                elif priority == "MEDIUM" and base_priority == "LOW":  # 中优先级关键词可以提升LOW到MEDIUM
+                    base_priority = "MEDIUM"
+                # LOW优先级关键词不会降低现有优先级
+        
+        # 2. 基于组件类型评估
+        component_type = context.get("component_type", "").upper()
+        if component_type in ["BUTTON", "FORM", "INPUT"] and category == "Functional":
+            if base_priority == "MEDIUM":
+                return "HIGH"
+            elif base_priority == "LOW":
+                return "MEDIUM"
+        
+        # 3. 基于测试类别评估
+        if category in ["Security", "Performance"] and base_priority != "LOW":
+            return "HIGH"
+        
+        # 4. 基于用户流程评估
+        if context.get("is_in_main_user_flow", False) and base_priority == "MEDIUM":
+            return "HIGH"
+        
+        # 5. 基于历史问题评估
+        if context.get("has_previous_issues", False):
+            if base_priority == "MEDIUM":
+                return "HIGH"
+            elif base_priority == "LOW":
+                return "MEDIUM"
+        
+        # 如果没有特殊调整，返回基础优先级
+        return base_priority
+    
+    def _is_in_main_user_flow(self, component_type: str) -> bool:
+        """判断组件是否在主要用户流程中"""
+        # 这里可以根据实际业务逻辑判断
+        main_flow_components = ["BUTTON", "FORM", "INPUT", "LINK", "MENU"]
+        return component_type in main_flow_components
+    
+    def classify_viewpoint(self, viewpoint: Dict[str, Any]) -> Dict[str, List[str]]:
+        """对测试观点进行多维度分类"""
+        classifications = {
+            # 1. 功能维度分类
+            "functional_type": [],
+            
+            # 2. 测试类型分类
+            "test_type": [],
+            
+            # 3. 用户体验维度
+            "ux_dimension": [],
+            
+            # 4. 技术实现维度
+            "technical_aspect": []
+        }
+        
+        viewpoint_text = viewpoint.get("viewpoint", "").lower()
+        category = viewpoint.get("category", "Functional")
+        
+        # 功能维度分类
+        if any(keyword in viewpoint_text for keyword in ["验证", "确认", "检查", "verify", "validate"]):
+            classifications["functional_type"].append("VERIFICATION")
+        if any(keyword in viewpoint_text for keyword in ["交互", "点击", "输入", "interaction", "click", "input"]):
+            classifications["functional_type"].append("INTERACTION")
+        if any(keyword in viewpoint_text for keyword in ["显示", "展示", "渲染", "display", "render"]):
+            classifications["functional_type"].append("DISPLAY")
+        
+        # 测试类型分类
+        for test_type, keywords in self.category_keywords.items():
+            if any(keyword.lower() in viewpoint_text for keyword in keywords):
+                classifications["test_type"].append(test_type.upper())
+        
+        # 如果测试类型为空，添加category
+        if not classifications["test_type"] and category:
+            classifications["test_type"].append(category.upper())
+        
+        # 用户体验维度
+        ux_keywords = {
+            "USABILITY": ["易用性", "使用", "操作", "usability", "ease of use"],
+            "ACCESSIBILITY": ["可访问性", "无障碍", "accessibility"],
+            "VISUAL": ["视觉", "外观", "样式", "visual", "appearance", "style"],
+            "FEEDBACK": ["反馈", "提示", "响应", "feedback", "response"]
+        }
+        
+        for ux_type, keywords in ux_keywords.items():
+            if any(keyword.lower() in viewpoint_text for keyword in keywords):
+                classifications["ux_dimension"].append(ux_type)
+        
+        # 技术实现维度
+        tech_keywords = {
+            "FRONTEND": ["前端", "界面", "UI", "渲染", "frontend", "interface", "rendering"],
+            "BACKEND": ["后端", "服务", "数据", "backend", "service", "data"],
+            "INTEGRATION": ["集成", "接口", "API", "integration", "interface", "api"],
+            "DATABASE": ["数据库", "存储", "database", "storage"]
+        }
+        
+        for tech_type, keywords in tech_keywords.items():
+            if any(keyword.lower() in viewpoint_text for keyword in keywords):
+                classifications["technical_aspect"].append(tech_type)
+        
+        return classifications
     
     def _standardize_viewpoint_name(self, viewpoint_name: str) -> str:
         """标准化观点名称"""
@@ -357,6 +529,34 @@ class ViewpointsStandardizer:
                     category = viewpoint.get("category", "Functional")
                     if category not in ["Functional", "UI/UX", "Performance", "Security", "Accessibility"]:
                         validation_result["warnings"].append(f"组件 {component_type} 第 {i+1} 个观点类别值异常: {category}")
+                    
+                    # 检查分类
+                    if "classifications" in viewpoint:
+                        classifications = viewpoint.get("classifications", {})
+                        if not isinstance(classifications, dict):
+                            validation_result["warnings"].append(f"组件 {component_type} 第 {i+1} 个观点分类格式错误")
+                        else:
+                            # 检查分类维度
+                            expected_dimensions = ["functional_type", "test_type", "ux_dimension", "technical_aspect"]
+                            for dim in classifications:
+                                if dim not in expected_dimensions:
+                                    validation_result["warnings"].append(f"组件 {component_type} 第 {i+1} 个观点包含未知分类维度: {dim}")
+                                
+                                # 检查分类值
+                                if not isinstance(classifications[dim], list):
+                                    validation_result["warnings"].append(f"组件 {component_type} 第 {i+1} 个观点分类维度 {dim} 的值必须是列表")
+                    
+                    # 检查优先级分析
+                    if "priority_analysis" in viewpoint:
+                        priority_analysis = viewpoint.get("priority_analysis", {})
+                        if not isinstance(priority_analysis, dict):
+                            validation_result["warnings"].append(f"组件 {component_type} 第 {i+1} 个观点优先级分析格式错误")
+                        else:
+                            # 检查必要字段
+                            required_fields = ["base_priority", "evaluated_priority"]
+                            for field in required_fields:
+                                if field not in priority_analysis:
+                                    validation_result["warnings"].append(f"组件 {component_type} 第 {i+1} 个观点优先级分析缺少字段: {field}")
                 
                 elif not isinstance(viewpoint, str):
                     validation_result["errors"].append(f"组件 {component_type} 第 {i+1} 个观点格式错误")

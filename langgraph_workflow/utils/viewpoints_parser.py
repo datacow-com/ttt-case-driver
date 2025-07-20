@@ -315,3 +315,14 @@ INPUT         | 格式验证
     def validate_viewpoints_comprehensive(viewpoints_data: Dict[str, Any]) -> Dict[str, Any]:
         """全面验证观点数据"""
         return viewpoints_standardizer.validate_viewpoints(viewpoints_data)
+        
+    @staticmethod
+    def parse_file(file_path: str, file_extension: str = None) -> Dict[str, Any]:
+        """解析测试观点文件"""
+        if not file_extension:
+            file_extension = file_path.split('.')[-1].lower()
+            
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+            
+        return ViewpointsParser.parse_viewpoints(file_content, file_extension, file_path)

@@ -26,7 +26,7 @@ from enhanced_workflow import run_enhanced_testcase_generation, build_enhanced_w
 import os
 import json
 import yaml
-from typing import Any, List
+from typing import Any, List, Dict
 import uuid
 import asyncio
 
@@ -319,10 +319,56 @@ async def decompress_figma_data(compressed_data: dict):
 # ==================== テスト観点標準化APIエンドポイント ====================
 
 @app.post("/viewpoints/standardize")
-async def standardize_viewpoints(viewpoints_data: dict):
-    """テスト観点を標準化"""
+async def standardize_viewpoints(
+    viewpoints_data: dict,
+    enable_priority_evaluation: bool = True,
+    enable_classification: bool = True
+):
+    """测试观点标准化"""
     standardized = viewpoints_standardizer.standardize_viewpoints(viewpoints_data)
-    return {"standardized_viewpoints": standardized}
+    
+    # 添加分析信息
+    result = {
+        "viewpoints": standardized,
+        "metadata": {
+            "total_viewpoints": sum(len(vps) for vps in standardized.values()),
+            "component_types": list(standardized.keys()),
+            "standardized": True,
+            "priority_evaluated": enable_priority_evaluation,
+            "classified": enable_classification,
+            "processed_at": datetime.now().isoformat()
+        }
+    }
+    
+    # 统计优先级分布
+    if enable_priority_evaluation:
+        priority_stats = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        for component_vps in standardized.values():
+            for vp in component_vps:
+                if isinstance(vp, dict) and "priority" in vp:
+                    priority = vp.get("priority", "MEDIUM")
+                    priority_stats[priority] = priority_stats.get(priority, 0) + 1
+        result["metadata"]["priority_stats"] = priority_stats
+    
+    # 统计分类分布
+    if enable_classification:
+        classification_stats = {
+            "functional_type": {},
+            "test_type": {},
+            "ux_dimension": {},
+            "technical_aspect": {}
+        }
+        
+        for component_vps in standardized.values():
+            for vp in component_vps:
+                if isinstance(vp, dict) and "classifications" in vp:
+                    for dim, classes in vp.get("classifications", {}).items():
+                        for cls in classes:
+                            classification_stats[dim][cls] = classification_stats[dim].get(cls, 0) + 1
+        
+        result["metadata"]["classification_stats"] = classification_stats
+    
+    return result
 
 @app.post("/viewpoints/create_mapping")
 async def create_viewpoint_mapping(viewpoints_data: dict):
@@ -343,10 +389,74 @@ async def merge_viewpoints(viewpoints_list: list):
     return {"merged_viewpoints": merged}
 
 @app.post("/viewpoints/validate")
-async def validate_viewpoints_comprehensive(viewpoints_data: dict):
-    """観点データを包括的に検証"""
-    validation = viewpoints_standardizer.validate_viewpoints(viewpoints_data)
-    return {"validation": validation}
+async def validate_viewpoints_comprehensive(
+    viewpoints_data: dict,
+    validate_classifications: bool = True,
+    validate_priority: bool = True
+):
+    """全面验证测试观点数据"""
+    validation_result = viewpoints_standardizer.validate_viewpoints(viewpoints_data)
+    
+    # 添加验证统计信息
+    validation_result["stats"] = {
+        "total_viewpoints": sum(len(vps) for vps in viewpoints_data.values()),
+        "component_types": len(viewpoints_data),
+        "error_count": len(validation_result["errors"]),
+        "warning_count": len(validation_result["warnings"]),
+        "suggestion_count": len(validation_result["suggestions"]),
+        "validated_classifications": validate_classifications,
+        "validated_priority": validate_priority,
+        "validation_time": datetime.now().isoformat()
+    }
+    
+    # 添加优先级统计
+    if validate_priority:
+        priority_stats = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "INVALID": 0}
+        for component_vps in viewpoints_data.values():
+            for vp in component_vps:
+                if isinstance(vp, dict) and "priority" in vp:
+                    priority = vp.get("priority", "MEDIUM")
+                    if priority in priority_stats:
+                        priority_stats[priority] += 1
+                    else:
+                        priority_stats["INVALID"] += 1
+        validation_result["priority_stats"] = priority_stats
+    
+    # 添加分类统计
+    if validate_classifications and any("classifications" in vp for vps in viewpoints_data.values() for vp in vps if isinstance(vp, dict)):
+        classification_coverage = {
+            "with_classifications": 0,
+            "without_classifications": 0,
+            "dimension_coverage": {
+                "functional_type": 0,
+                "test_type": 0,
+                "ux_dimension": 0,
+                "technical_aspect": 0
+            }
+        }
+        
+        total_viewpoints = 0
+        for component_vps in viewpoints_data.values():
+            for vp in component_vps:
+                if isinstance(vp, dict):
+                    total_viewpoints += 1
+                    if "classifications" in vp:
+                        classification_coverage["with_classifications"] += 1
+                        for dim in classification_coverage["dimension_coverage"]:
+                            if dim in vp["classifications"] and vp["classifications"][dim]:
+                                classification_coverage["dimension_coverage"][dim] += 1
+                    else:
+                        classification_coverage["without_classifications"] += 1
+        
+        # 计算覆盖率百分比
+        if total_viewpoints > 0:
+            classification_coverage["classification_rate"] = round(classification_coverage["with_classifications"] / total_viewpoints * 100, 2)
+            for dim in classification_coverage["dimension_coverage"]:
+                classification_coverage["dimension_coverage"][f"{dim}_rate"] = round(classification_coverage["dimension_coverage"][dim] / total_viewpoints * 100, 2)
+        
+        validation_result["classification_coverage"] = classification_coverage
+    
+    return validation_result
 
 # ==================== パフォーマンスモニタリングAPIエンドポイント ====================
 
@@ -885,7 +995,9 @@ async def get_intermediate_result(node_name: str):
 async def parse_viewpoints(
     viewpoints_file: UploadFile,
     file_extension: str = Form(None),
-    enable_standardization: bool = Form(True)
+    enable_standardization: bool = Form(True),
+    enable_priority_evaluation: bool = Form(True),
+    enable_classification: bool = Form(True)
 ):
     """テスト観点を解析"""
     # 一時ファイルを保存
@@ -903,13 +1015,154 @@ async def parse_viewpoints(
         # 標準化が有効な場合
         if enable_standardization:
             viewpoints = viewpoints_standardizer.standardize_viewpoints(viewpoints)
-        
-        return JSONResponse(viewpoints)
+            
+            # 返回结果中添加分析信息
+            result = {
+                "viewpoints": viewpoints,
+                "metadata": {
+                    "total_viewpoints": sum(len(vps) for vps in viewpoints.values()),
+                    "component_types": list(viewpoints.keys()),
+                    "standardized": enable_standardization,
+                    "priority_evaluated": enable_priority_evaluation,
+                    "classified": enable_classification,
+                    "processed_at": datetime.now().isoformat()
+                }
+            }
+            
+            # 统计优先级分布
+            if enable_priority_evaluation:
+                priority_stats = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+                for component_vps in viewpoints.values():
+                    for vp in component_vps:
+                        if isinstance(vp, dict) and "priority" in vp:
+                            priority = vp.get("priority", "MEDIUM")
+                            priority_stats[priority] = priority_stats.get(priority, 0) + 1
+                result["metadata"]["priority_stats"] = priority_stats
+            
+            # 统计分类分布
+            if enable_classification:
+                classification_stats = {
+                    "functional_type": {},
+                    "test_type": {},
+                    "ux_dimension": {},
+                    "technical_aspect": {}
+                }
+                
+                for component_vps in viewpoints.values():
+                    for vp in component_vps:
+                        if isinstance(vp, dict) and "classifications" in vp:
+                            for dim, classes in vp.get("classifications", {}).items():
+                                for cls in classes:
+                                    classification_stats[dim][cls] = classification_stats[dim].get(cls, 0) + 1
+                
+                result["metadata"]["classification_stats"] = classification_stats
+            
+            return JSONResponse(result)
+        else:
+            return JSONResponse(viewpoints)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"テスト観点の解析に失敗しました: {str(e)}")
     finally:
         # 一時ファイルを削除
         os.remove(temp_path)
+
+@app.post("/viewpoints/analyze_priority")
+async def analyze_viewpoints_priority(
+    viewpoints_data: Dict[str, Any],
+    context: Dict[str, Any] = None
+):
+    """分析测试观点优先级"""
+    if not context:
+        context = {}
+    
+    result = {}
+    
+    for component_type, viewpoints in viewpoints_data.items():
+        result[component_type] = []
+        
+        for viewpoint in viewpoints:
+            if isinstance(viewpoint, dict):
+                # 设置组件类型上下文
+                component_context = {
+                    "component_type": component_type,
+                    "is_in_main_user_flow": viewpoints_standardizer._is_in_main_user_flow(component_type),
+                    "has_previous_issues": context.get("has_previous_issues", False)
+                }
+                
+                # 评估优先级
+                priority = viewpoints_standardizer.evaluate_viewpoint_priority(viewpoint, component_context)
+                
+                # 创建带优先级的观点副本
+                vp_with_priority = viewpoint.copy()
+                vp_with_priority["priority"] = priority
+                vp_with_priority["priority_analysis"] = {
+                    "base_priority": viewpoint.get("priority", "MEDIUM"),
+                    "evaluated_priority": priority,
+                    "context": component_context,
+                    "evaluation_time": datetime.now().isoformat()
+                }
+                
+                result[component_type].append(vp_with_priority)
+            else:
+                # 对于字符串观点，先标准化再评估
+                std_viewpoint = viewpoints_standardizer._standardize_viewpoint_string(str(viewpoint))
+                
+                # 设置组件类型上下文
+                component_context = {
+                    "component_type": component_type,
+                    "is_in_main_user_flow": viewpoints_standardizer._is_in_main_user_flow(component_type),
+                    "has_previous_issues": context.get("has_previous_issues", False)
+                }
+                
+                # 评估优先级
+                priority = viewpoints_standardizer.evaluate_viewpoint_priority(std_viewpoint, component_context)
+                
+                # 更新优先级
+                std_viewpoint["priority"] = priority
+                std_viewpoint["priority_analysis"] = {
+                    "base_priority": std_viewpoint.get("priority", "MEDIUM"),
+                    "evaluated_priority": priority,
+                    "context": component_context,
+                    "evaluation_time": datetime.now().isoformat()
+                }
+                
+                result[component_type].append(std_viewpoint)
+    
+    return JSONResponse(result)
+
+@app.post("/viewpoints/classify")
+async def classify_viewpoints(
+    viewpoints_data: Dict[str, Any]
+):
+    """对测试观点进行多维度分类"""
+    result = {}
+    
+    for component_type, viewpoints in viewpoints_data.items():
+        result[component_type] = []
+        
+        for viewpoint in viewpoints:
+            if isinstance(viewpoint, dict):
+                # 分类观点
+                classifications = viewpoints_standardizer.classify_viewpoint(viewpoint)
+                
+                # 创建带分类的观点副本
+                vp_with_classification = viewpoint.copy()
+                vp_with_classification["classifications"] = classifications
+                
+                result[component_type].append(vp_with_classification)
+            else:
+                # 对于字符串观点，先标准化再分类
+                std_viewpoint = viewpoints_standardizer._standardize_viewpoint_string(str(viewpoint))
+                
+                # 分类观点
+                classifications = viewpoints_standardizer.classify_viewpoint(std_viewpoint)
+                
+                # 更新分类
+                std_viewpoint["classifications"] = classifications
+                
+                result[component_type].append(std_viewpoint)
+    
+    return JSONResponse(result)
 
 @app.get("/viewpoints/formats")
 async def get_supported_viewpoint_formats():
