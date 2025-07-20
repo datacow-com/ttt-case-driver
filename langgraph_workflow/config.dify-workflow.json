@@ -32,6 +32,7 @@
 
 			"load_page": {
 				"type": "http",
+				"priority": "high",
 				"data": {
 					"method": "POST",
 					"url": "http://host.docker.internal:8000/run_node/load_page/",
@@ -42,11 +43,12 @@
 						"figma_yaml": "{{figma_yaml_file.content}}"
 					}
 				},
-				"next": "match_viewpoints"
+				"next": ["match_viewpoints", "route_infer"]
 			},
 
 			"match_viewpoints": {
 				"type": "http",
+				"priority": "high",
 				"data": {
 					"method": "POST",
 					"url": "http://host.docker.internal:8000/run_node/match_viewpoints/",
@@ -54,7 +56,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"page_structure": "{{load_page.response.content}}",
+						"clean_json_cache_id": "{{load_page.response.cache_id}}",
 						"viewpoints": "{{viewpoints_file.content}}"
 					}
 				},
@@ -63,6 +65,7 @@
 
 			"generate_testcases": {
 				"type": "http",
+				"priority": "medium",
 				"data": {
 					"method": "POST",
 					"url": "http://host.docker.internal:8000/run_node/generate_testcases/",
@@ -70,20 +73,23 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"component_viewpoint_map": "{{match_viewpoints.response.content}}",
+						"component_viewpoints_cache_id": "{{match_viewpoints.response.cache_id}}",
 						"agent_config": {
 							"provider": "openai",
 							"api_key": "{{api_key}}",
 							"model": "gpt-4o",
 							"temperature": 0.3
-						}
+						},
+						"parallel": true,
+						"max_workers": 4
 					}
 				},
-				"next": "route_infer"
+				"next": "wait_for_parallel"
 			},
 
 			"route_infer": {
 				"type": "http",
+				"priority": "high",
 				"data": {
 					"method": "POST",
 					"url": "http://host.docker.internal:8000/run_node/route_infer/",
@@ -91,14 +97,29 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"page_structure": "{{load_page.response.content}}"
+						"clean_json_cache_id": "{{load_page.response.cache_id}}"
 					}
 				},
-				"next": "generate_cross_page_case"
+				"next": "wait_for_parallel"
+			},
+
+			"wait_for_parallel": {
+				"type": "condition",
+				"priority": "high",
+				"data": {
+					"conditions": [
+						{
+							"condition": "{{generate_testcases.response}} != null && {{route_infer.response}} != null",
+							"next": "generate_cross_page_case"
+						}
+					],
+					"default": "wait_for_parallel"
+				}
 			},
 
 			"generate_cross_page_case": {
 				"type": "http",
+				"priority": "medium",
 				"data": {
 					"method": "POST",
 					"url": "http://host.docker.internal:8000/run_node/generate_cross_page_case/",
@@ -106,8 +127,8 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"routing_info": "{{route_infer.response.content}}",
-						"base_testcases": "{{generate_testcases.response.content}}",
+						"routes_cache_id": "{{route_infer.response.cache_id}}",
+						"testcases_cache_id": "{{generate_testcases.response.cache_id}}",
 						"agent_config": {
 							"provider": "openai",
 							"api_key": "{{api_key}}",
@@ -121,6 +142,7 @@
 
 			"format_output": {
 				"type": "http",
+				"priority": "low",
 				"data": {
 					"method": "POST",
 					"url": "http://host.docker.internal:8000/run_node/format_output/",
@@ -137,6 +159,7 @@
 
 			"show_result": {
 				"type": "output",
+				"priority": "low",
 				"data": {
 					"title": "结构化测试用例输出（Markdown）",
 					"description": "以下是从Figma自动生成的结构化测试用例",

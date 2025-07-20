@@ -26,6 +26,47 @@ from enhanced_workflow import run_enhanced_testcase_generation, build_enhanced_w
 import os
 import json
 import yaml
+from typing import Any
+import uuid
+import asyncio
+
+# 任务优先级常量
+PRIORITY_HIGH = "high"
+PRIORITY_MEDIUM = "medium"
+PRIORITY_LOW = "low"
+
+# 优先级对应的资源分配
+PRIORITY_RESOURCES = {
+    PRIORITY_HIGH: {"max_workers": 8, "timeout": 60},
+    PRIORITY_MEDIUM: {"max_workers": 4, "timeout": 120},
+    PRIORITY_LOW: {"max_workers": 2, "timeout": 300}
+}
+
+def process_with_priority(priority: str = PRIORITY_MEDIUM, **kwargs):
+    """根据优先级分配计算资源
+    
+    Args:
+        priority: 任务优先级，可选值为high、medium、low
+        **kwargs: 其他参数
+        
+    Returns:
+        包含资源分配的参数字典
+    """
+    # 获取优先级对应的资源分配
+    resources = PRIORITY_RESOURCES.get(priority, PRIORITY_RESOURCES[PRIORITY_MEDIUM])
+    
+    # 合并资源分配和其他参数
+    params = {**kwargs}
+    
+    # 如果未指定max_workers，则使用优先级对应的值
+    if "max_workers" not in params and "max_workers" in resources:
+        params["max_workers"] = resources["max_workers"]
+    
+    # 如果未指定timeout，则使用优先级对应的值
+    if "timeout" not in params and "timeout" in resources:
+        params["timeout"] = resources["timeout"]
+    
+    return params
 
 app = FastAPI(
     title="LangGraph Workflow API",
@@ -339,10 +380,23 @@ async def run_node_fetch_and_clean_figma_json(
     INTERMEDIATE_RESULTS['fetch_and_clean_figma_json'] = cleaned
     return JSONResponse(cleaned)
 
+# 添加缓存节点数据的函数
+def cache_node_data(data: Any, prefix: str = "node_data") -> str:
+    """缓存节点数据并返回缓存ID"""
+    # 生成唯一缓存ID
+    cache_id = f"{prefix}_{uuid.uuid4().hex}"
+    
+    # 将数据缓存到Redis
+    redis_manager.set_cache(cache_id, data, ttl=3600)  # 1小时过期
+    
+    return cache_id
+
 @app.post("/run_node/match_viewpoints/")
 async def run_node_match_viewpoints(
-    clean_json: UploadFile,
-    viewpoints_db: UploadFile,
+    clean_json: UploadFile = None,
+    clean_json_cache_id: str = Form(None),
+    viewpoints_db: UploadFile = None,
+    viewpoints_db_cache_id: str = Form(None),
     agent_name: str = Form("match_viewpoints"),
     provider: str = Form(None),
     model: str = Form(None),
@@ -352,8 +406,24 @@ async def run_node_match_viewpoints(
     few_shot_examples: str = Form(None)
 ):
     """テスト観点マッチングノードを実行"""
-    clean_json_obj = json.load(clean_json.file)
-    viewpoints_db_obj = json.load(viewpoints_db.file)
+    # 从缓存或上传文件获取数据
+    if clean_json_cache_id:
+        clean_json_obj = redis_manager.get_cache(clean_json_cache_id)
+        if not clean_json_obj:
+            raise HTTPException(status_code=404, detail="缓存的页面结构数据未找到")
+    elif clean_json:
+        clean_json_obj = json.load(clean_json.file)
+    else:
+        raise HTTPException(status_code=400, detail="必须提供页面结构数据或缓存ID")
+        
+    if viewpoints_db_cache_id:
+        viewpoints_db_obj = redis_manager.get_cache(viewpoints_db_cache_id)
+        if not viewpoints_db_obj:
+            raise HTTPException(status_code=404, detail="缓存的测试观点数据未找到")
+    elif viewpoints_db:
+        viewpoints_db_obj = json.load(viewpoints_db.file)
+    else:
+        raise HTTPException(status_code=400, detail="必须提供测试观点数据或缓存ID")
     
     # カスタム設定が提供されている場合、SmartLLMClientを作成
     llm_client = None
@@ -383,22 +453,45 @@ async def run_node_match_viewpoints(
         agent_name=agent_name
     )
     
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "match_viewpoints_result")
+    
+    # 保存中间结果
     INTERMEDIATE_RESULTS['match_viewpoints'] = result
-    return JSONResponse(result)
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id
+    })
 
 @app.post("/run_node/generate_testcases/")
 async def run_node_generate_testcases(
-    component_viewpoints: UploadFile,
+    component_viewpoints: UploadFile = None,
+    component_viewpoints_cache_id: str = Form(None),
     agent_name: str = Form("generate_testcases"),
     provider: str = Form(None),
     model: str = Form(None),
     temperature: float = Form(None),
     max_tokens: int = Form(None),
     prompt_template: str = Form(None),
-    few_shot_examples: str = Form(None)
+    few_shot_examples: str = Form(None),
+    incremental: bool = Form(False),
+    changed_component_ids: str = Form(None),
+    parallel: bool = Form(True),
+    max_workers: int = Form(4),
+    priority: str = Form(PRIORITY_MEDIUM)
 ):
     """テストケース生成ノードを実行"""
-    component_viewpoints_obj = json.load(component_viewpoints.file)
+    # 从缓存或上传文件获取数据
+    if component_viewpoints_cache_id:
+        component_viewpoints_obj = redis_manager.get_cache(component_viewpoints_cache_id)
+        if not component_viewpoints_obj:
+            raise HTTPException(status_code=404, detail="缓存的组件-观点映射数据未找到")
+    elif component_viewpoints:
+        component_viewpoints_obj = json.load(component_viewpoints.file)
+    else:
+        raise HTTPException(status_code=400, detail="必须提供组件-观点映射数据或缓存ID")
     
     # カスタム設定が提供されている場合、SmartLLMClientを作成
     llm_client = None
@@ -417,6 +510,21 @@ async def run_node_generate_testcases(
             few_shot = json.loads(few_shot_examples)
         except:
             few_shot = None
+    
+    # 解析变更的组件ID
+    changed_ids = None
+    if changed_component_ids:
+        try:
+            changed_ids = json.loads(changed_component_ids)
+        except:
+            # 尝试以逗号分隔的字符串解析
+            changed_ids = [id.strip() for id in changed_component_ids.split(",") if id.strip()]
+    
+    # 根据优先级分配资源
+    resources = process_with_priority(
+        priority=priority,
+        max_workers=max_workers
+    )
     
     # ノードを実行
     result = generate_testcases(
@@ -424,25 +532,48 @@ async def run_node_generate_testcases(
         llm_client=llm_client,
         prompt_template=prompt_template,
         few_shot_examples=few_shot,
-        agent_name=agent_name
+        agent_name=agent_name,
+        incremental=incremental,
+        changed_component_ids=changed_ids,
+        parallel=parallel,
+        max_workers=resources["max_workers"]
     )
     
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "generate_testcases_result")
+    
+    # 保存中间结果
     INTERMEDIATE_RESULTS['generate_testcases'] = result
-    return JSONResponse(result)
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id
+    })
 
 @app.post("/run_node/route_infer/")
 async def run_node_route_infer(
-    clean_json: UploadFile,
+    clean_json: UploadFile = None,
+    clean_json_cache_id: str = Form(None),
     agent_name: str = Form("route_infer"),
     provider: str = Form(None),
     model: str = Form(None),
     temperature: float = Form(None),
     max_tokens: int = Form(None),
     prompt_template: str = Form(None),
-    few_shot_examples: str = Form(None)
+    few_shot_examples: str = Form(None),
+    priority: str = Form(PRIORITY_HIGH)
 ):
     """ルート推論ノードを実行"""
-    clean_json_obj = json.load(clean_json.file)
+    # 从缓存或上传文件获取数据
+    if clean_json_cache_id:
+        clean_json_obj = redis_manager.get_cache(clean_json_cache_id)
+        if not clean_json_obj:
+            raise HTTPException(status_code=404, detail="缓存的页面结构数据未找到")
+    elif clean_json:
+        clean_json_obj = json.load(clean_json.file)
+    else:
+        raise HTTPException(status_code=400, detail="必须提供页面结构数据或缓存ID")
     
     # カスタム設定が提供されている場合、SmartLLMClientを作成
     llm_client = None
@@ -454,27 +585,75 @@ async def run_node_route_infer(
             # エージェント名を使用
             llm_client = SmartLLMClient(agent_name)
     
-    # ノードを実行
-    result = route_infer(clean_json_obj, llm_client)
+    # 根据优先级分配资源
+    resources = process_with_priority(priority=priority)
     
+    # ノードを実行（添加超时处理）
+    try:
+        # 设置超时
+        timeout = resources.get("timeout", 60)
+        # 创建一个异步任务
+        result_task = asyncio.create_task(
+            asyncio.wait_for(
+                asyncio.to_thread(route_infer, clean_json_obj, llm_client),
+                timeout=timeout
+            )
+        )
+        # 等待任务完成
+        result = await result_task
+    except asyncio.TimeoutError:
+        # 超时处理
+        raise HTTPException(status_code=408, detail=f"处理超时（{timeout}秒）")
+    except Exception as e:
+        # 其他异常处理
+        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+    
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "route_infer_result")
+    
+    # 保存中间结果
     INTERMEDIATE_RESULTS['route_infer'] = result
-    return JSONResponse(result)
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id
+    })
 
 @app.post("/run_node/generate_cross_page_case/")
 async def run_node_generate_cross_page_case(
-    routes: UploadFile,
-    testcases: UploadFile,
+    routes: UploadFile = None,
+    routes_cache_id: str = Form(None),
+    testcases: UploadFile = None,
+    testcases_cache_id: str = Form(None),
     agent_name: str = Form("generate_cross_page_case"),
     provider: str = Form(None),
     model: str = Form(None),
     temperature: float = Form(None),
     max_tokens: int = Form(None),
     prompt_template: str = Form(None),
-    few_shot_examples: str = Form(None)
+    few_shot_examples: str = Form(None),
+    priority: str = Form(PRIORITY_MEDIUM)
 ):
     """クロスページケース生成ノードを実行"""
-    routes_obj = json.load(routes.file)
-    testcases_obj = json.load(testcases.file)
+    # 从缓存或上传文件获取数据
+    if routes_cache_id:
+        routes_obj = redis_manager.get_cache(routes_cache_id)
+        if not routes_obj:
+            raise HTTPException(status_code=404, detail="缓存的路由信息未找到")
+    elif routes:
+        routes_obj = json.load(routes.file)
+    else:
+        raise HTTPException(status_code=400, detail="必须提供路由信息或缓存ID")
+        
+    if testcases_cache_id:
+        testcases_obj = redis_manager.get_cache(testcases_cache_id)
+        if not testcases_obj:
+            raise HTTPException(status_code=404, detail="缓存的测试用例数据未找到")
+    elif testcases:
+        testcases_obj = json.load(testcases.file)
+    else:
+        raise HTTPException(status_code=400, detail="必须提供测试用例数据或缓存ID")
     
     # カスタム設定が提供されている場合、SmartLLMClientを作成
     llm_client = None
@@ -494,11 +673,40 @@ async def run_node_generate_cross_page_case(
         except:
             few_shot = None
     
-    # ノードを実行
-    result = generate_cross_page_case(routes_obj, testcases_obj, llm_client)
+    # 根据优先级分配资源
+    resources = process_with_priority(priority=priority)
     
+    # ノードを実行（添加超时处理）
+    try:
+        # 设置超时
+        timeout = resources.get("timeout", 120)
+        # 创建一个异步任务
+        result_task = asyncio.create_task(
+            asyncio.wait_for(
+                asyncio.to_thread(generate_cross_page_case, routes_obj, testcases_obj, llm_client),
+                timeout=timeout
+            )
+        )
+        # 等待任务完成
+        result = await result_task
+    except asyncio.TimeoutError:
+        # 超时处理
+        raise HTTPException(status_code=408, detail=f"处理超时（{timeout}秒）")
+    except Exception as e:
+        # 其他异常处理
+        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+    
+    # 缓存结果并生成缓存ID
+    result_cache_id = cache_node_data(result, "cross_page_case_result")
+    
+    # 保存中间结果
     INTERMEDIATE_RESULTS['generate_cross_page_case'] = result
-    return JSONResponse(result)
+    
+    # 返回结果和缓存ID
+    return JSONResponse({
+        "content": result,
+        "cache_id": result_cache_id
+    })
 
 @app.post("/run_node/format_output/")
 async def run_node_format_output(

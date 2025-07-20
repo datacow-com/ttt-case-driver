@@ -7,6 +7,8 @@ import json
 import time
 import re
 from functools import lru_cache
+import concurrent.futures
+from collections import defaultdict
 
 # ==================== 1. 智能批处理策略 ====================
 
@@ -17,9 +19,120 @@ def estimate_tokens(component: Dict) -> int:
     props_tokens = len(component.keys()) * 10
     return base_tokens + props_tokens
 
+def group_components_by_type(components: List[Dict]) -> Dict[str, List[Dict]]:
+    """按组件类型分组，便于批处理
+    
+    Args:
+        components: 组件列表
+        
+    Returns:
+        按组件类型分组的字典
+    """
+    groups = defaultdict(list)
+    for item in components:
+        comp_type = item['component'].get('type', 'unknown')
+        groups[comp_type].append(item)
+    return dict(groups)
+
 def smart_batch_processing(components: List[Dict], llm_client, prompt_template: str = None, 
-                         few_shot_examples: list = None, agent_name: str = "generate_testcases") -> List[Dict[str, Any]]:
-    """智能批处理策略"""
+                         few_shot_examples: list = None, agent_name: str = "generate_testcases",
+                         max_workers: int = 4, parallel: bool = True) -> List[Dict[str, Any]]:
+    """智能批处理策略，支持并行处理
+    
+    Args:
+        components: 组件列表
+        llm_client: LLM客户端
+        prompt_template: 自定义提示模板
+        few_shot_examples: Few-shot学习示例
+        agent_name: 代理名称
+        max_workers: 最大并行工作线程数
+        parallel: 是否启用并行处理
+        
+    Returns:
+        生成的测试用例列表
+    """
+    # 如果组件数量很少，不使用并行处理
+    if len(components) <= 2 or not parallel:
+        return _sequential_batch_processing(components, llm_client, prompt_template, few_shot_examples, agent_name)
+    
+    # 按组件类型分组，便于批处理
+    component_groups = group_components_by_type(components)
+    
+    # 估算每个组件的token数量
+    group_tokens = {}
+    for group_type, group_components in component_groups.items():
+        total_tokens = 0
+        for item in group_components:
+            comp = item['component']
+            viewpoints = item['viewpoints']
+            # 每个观点的估算token数
+            for _ in viewpoints:
+                total_tokens += estimate_tokens(comp)
+        group_tokens[group_type] = total_tokens
+    
+    # 动态调整批大小
+    batch_sizes = {}
+    for group_type, tokens in group_tokens.items():
+        avg_tokens = tokens / len(component_groups[group_type])
+        # 目标保持在4000 tokens以内
+        target_tokens = 4000
+        batch_sizes[group_type] = max(1, min(20, int(target_tokens / avg_tokens)))
+    
+    # 准备并行处理任务
+    all_batches = []
+    for group_type, group_components in component_groups.items():
+        batch_size = batch_sizes.get(group_type, 5)  # 默认批大小为5
+        
+        # 分批
+        for i in range(0, len(group_components), batch_size):
+            batch = group_components[i:i+batch_size]
+            all_batches.append(batch)
+    
+    # 并行处理各批次
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交任务
+        future_to_batch = {
+            executor.submit(
+                batch_process_components, 
+                batch, 
+                llm_client, 
+                prompt_template, 
+                few_shot_examples, 
+                agent_name
+            ): batch for batch in all_batches
+        }
+        
+        # 收集结果
+        for future in concurrent.futures.as_completed(future_to_batch):
+            batch = future_to_batch[future]
+            try:
+                batch_results = future.result()
+                all_results.extend(batch_results)
+            except Exception as e:
+                print(f"批处理失败，降级到单个处理: {str(e)}")
+                # 批处理失败时降级到单个处理
+                for item in batch:
+                    try:
+                        individual_results = individual_process_components([item], llm_client, prompt_template, few_shot_examples, agent_name)
+                        all_results.extend(individual_results)
+                    except Exception as inner_e:
+                        print(f"单个处理失败: {str(inner_e)}")
+                        # 创建默认结果
+                        comp = item['component']
+                        for viewpoint in item['viewpoints']:
+                            all_results.append({
+                                'component_id': comp.get('id', ''),
+                                'component': comp,
+                                'viewpoint': viewpoint,
+                                'testcase': f"Default test case for {viewpoint} (处理失败: {str(inner_e)})"
+                            })
+    
+    return all_results
+
+def _sequential_batch_processing(components: List[Dict], llm_client, prompt_template: str = None, 
+                              few_shot_examples: list = None, agent_name: str = "generate_testcases") -> List[Dict[str, Any]]:
+    """顺序批处理（原始实现）"""
     # 估算每个组件的token数量
     component_tokens = []
     for item in components:
@@ -405,12 +518,40 @@ def generate_cache_key(component_viewpoints: Dict, agent_name: str) -> str:
     # 使用增强的缓存键生成
     return enhanced_cache_key_generation("", component_viewpoints, agent_name)
 
+def filter_components(components: List[Dict], changed_component_ids: List[str] = None) -> List[Dict]:
+    """根据变更的组件ID过滤组件列表
+    
+    Args:
+        components: 组件列表
+        changed_component_ids: 变更的组件ID列表，如果为None则返回所有组件
+        
+    Returns:
+        过滤后的组件列表
+    """
+    if not changed_component_ids:
+        return components
+    
+    filtered_components = []
+    for item in components:
+        comp = item['component']
+        comp_id = comp.get('id', '')
+        
+        # 如果组件ID在变更列表中，或者是容器组件（可能包含变更的子组件）
+        if comp_id in changed_component_ids or comp.get('type', '') in ['frame', 'group', 'section']:
+            filtered_components.append(item)
+    
+    return filtered_components
+
 @cache_llm_call(ttl=3600)
 def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None, 
                       prompt_template: str = None, few_shot_examples: list = None,
-                      agent_name: str = "generate_testcases") -> List[Dict[str, Any]]:
+                      agent_name: str = "generate_testcases",
+                      incremental: bool = False,
+                      changed_component_ids: List[str] = None,
+                      parallel: bool = True,
+                      max_workers: int = 4) -> List[Dict[str, Any]]:
     """
-    优化的测试用例生成，支持智能批处理和高效缓存
+    优化的测试用例生成，支持智能批处理、高效缓存和并行处理
     
     Args:
         component_viewpoints: 组件和观点的映射
@@ -418,6 +559,10 @@ def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None,
         prompt_template: 自定义提示模板
         few_shot_examples: Few-shot学习示例
         agent_name: 代理名称（用于从配置加载）
+        incremental: 是否启用增量处理
+        changed_component_ids: 变更的组件ID列表，用于增量处理
+        parallel: 是否启用并行处理
+        max_workers: 最大并行工作线程数
         
     Returns:
         生成的测试用例列表
@@ -425,10 +570,11 @@ def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None,
     # 生成缓存键
     cache_key = generate_cache_key(component_viewpoints, agent_name)
     
-    # 检查缓存
-    cached_result = cache_manager.get(cache_key)
-    if cached_result is not None:
-        return cached_result
+    # 检查缓存（非增量处理时）
+    if not incremental:
+        cached_result = cache_manager.get(cache_key)
+        if cached_result is not None:
+            return cached_result
     
     # 准备LLM客户端
     if llm_client is None:
@@ -436,8 +582,50 @@ def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None,
     
     components = component_viewpoints.get('component_viewpoints', [])
     
-    # 使用智能批处理策略
-    result = smart_batch_processing(components, llm_client, prompt_template, few_shot_examples, agent_name)
+    # 增量处理：过滤组件
+    if incremental and changed_component_ids:
+        original_count = len(components)
+        components = filter_components(components, changed_component_ids)
+        filtered_count = len(components)
+        print(f"增量处理：从{original_count}个组件中过滤出{filtered_count}个组件")
+    
+    # 使用智能批处理策略（支持并行处理）
+    result = smart_batch_processing(
+        components, 
+        llm_client, 
+        prompt_template, 
+        few_shot_examples, 
+        agent_name,
+        max_workers=max_workers,
+        parallel=parallel
+    )
+    
+    # 增量处理：合并结果
+    if incremental and changed_component_ids:
+        # 获取之前的结果
+        previous_result = cache_manager.get(cache_key)
+        if previous_result:
+            # 创建组件ID到测试用例的映射
+            result_map = {item['component_id']: item for item in result}
+            
+            # 合并结果
+            merged_result = []
+            for item in previous_result:
+                comp_id = item['component_id']
+                if comp_id in result_map:
+                    # 使用新结果替换
+                    merged_result.append(result_map[comp_id])
+                    # 从结果映射中移除，以便后续添加未匹配的新结果
+                    del result_map[comp_id]
+                else:
+                    # 保留原结果
+                    merged_result.append(item)
+            
+            # 添加未匹配的新结果
+            for item in result_map.values():
+                merged_result.append(item)
+            
+            result = merged_result
     
     # 动态设置缓存TTL（根据数据量和复杂度）
     complexity = len(components) * sum(len(item['viewpoints']) for item in components)
