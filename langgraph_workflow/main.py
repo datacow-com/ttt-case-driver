@@ -15,12 +15,80 @@ from utils.config_loader import load_config, get_agent_config
 from utils.llm_client import LLMClient
 from utils.param_utils import save_temp_upload, parse_yaml_file
 from utils.viewpoints_parser import ViewpointsParser
+from utils.redis_manager import redis_manager
+from utils.state_management import StateManager
+from enhanced_workflow import run_enhanced_testcase_generation, build_enhanced_workflow_with_wrappers
 import os
 import json
 
 app = FastAPI()
 
 INTERMEDIATE_RESULTS = {}
+
+# ==================== Redis相关API端点 ====================
+
+@app.post("/create_session/")
+async def create_session(
+    input_data: dict,
+    config: dict = {}
+):
+    """创建新session"""
+    session_id = StateManager.create_session(input_data, config)
+    return {"session_id": session_id, "status": "created"}
+
+@app.get("/session/{session_id}")
+async def get_session(session_id: str):
+    """获取session信息"""
+    session = StateManager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+@app.get("/session/{session_id}/results")
+async def get_session_results(session_id: str):
+    """获取session的所有节点结果"""
+    results = redis_manager.get_all_node_results(session_id)
+    return {"session_id": session_id, "results": results}
+
+@app.get("/session/{session_id}/stats")
+async def get_session_stats(session_id: str):
+    """获取session统计信息"""
+    stats = redis_manager.get_session_stats(session_id)
+    return stats
+
+@app.get("/redis/stats")
+async def get_redis_stats():
+    """获取Redis统计信息"""
+    return redis_manager.get_stats()
+
+@app.delete("/cache/clear")
+async def clear_cache(pattern: str = None):
+    """清除缓存"""
+    if pattern:
+        deleted_count = redis_manager.clear_cache_by_pattern(pattern)
+        return {"message": f"Cleared {deleted_count} cache entries", "pattern": pattern}
+    else:
+        # 清除所有缓存
+        deleted_count = redis_manager.clear_cache_by_pattern("*")
+        return {"message": f"Cleared {deleted_count} cache entries", "pattern": "all"}
+
+@app.get("/cache/figma/{file_key}")
+async def get_cached_figma_data(file_key: str):
+    """获取缓存的Figma数据"""
+    data = redis_manager.get_figma_data(file_key)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Figma data not found in cache")
+    return data
+
+@app.get("/cache/viewpoints/{file_hash}")
+async def get_cached_viewpoints(file_hash: str):
+    """获取缓存的测试观点"""
+    data = redis_manager.get_viewpoints(file_hash)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Viewpoints not found in cache")
+    return data
+
+# ==================== 现有API端点 ====================
 
 @app.post("/run_node/fetch_and_clean_figma_json/")
 async def run_node_fetch_and_clean_figma_json(
@@ -192,37 +260,24 @@ async def parse_viewpoints(
     viewpoints_file: UploadFile,
     file_extension: str = Form(None)
 ):
-    """テスト観点ファイルを解析"""
+    """解析测试观点文件"""
     try:
         file_content = await viewpoints_file.read()
         filename = viewpoints_file.filename
         
-        # ファイル拡張子を決定
-        if file_extension:
-            ext = file_extension
-        elif filename and '.' in filename:
-            ext = filename.split('.')[-1]
-        else:
-            raise HTTPException(status_code=400, detail="ファイル拡張子を指定してください")
-        
-        # テスト観点を解析
-        parser = ViewpointsParser()
-        viewpoints_data = parser.parse_viewpoints(file_content, ext, filename)
-        
-        # 有効性を検証
-        if not parser.validate_viewpoints(viewpoints_data):
-            raise HTTPException(status_code=400, detail="無効なテスト観点データです")
+        # 使用带缓存的解析方法
+        viewpoints = ViewpointsParser.parse_viewpoints_with_cache(file_content, file_extension, filename)
         
         return JSONResponse({
             "success": True,
-            "message": "テスト観点が正常に解析されました",
-            "data": viewpoints_data,
-            "format": ext,
-            "component_count": len(viewpoints_data),
-            "total_viewpoints": sum(len(viewpoints) for viewpoints in viewpoints_data.values())
+            "viewpoints": viewpoints,
+            "filename": filename
         })
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"テスト観点の解析に失敗しました: {str(e)}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=400)
 
 @app.get("/viewpoints/formats")
 async def get_supported_viewpoint_formats():
@@ -253,3 +308,145 @@ async def set_system_language(language: str = Form(...)):
         "message": f"言語が{language}に設定されました",
         "language": language
     })
+
+@app.post("/run_enhanced_workflow/")
+async def run_enhanced_workflow(
+    figma_file: UploadFile,
+    viewpoints_file: UploadFile,
+    provider: str = Form('gpt-4o'),
+    api_key: str = Form(None),
+    temperature: float = Form(0.2)
+):
+    """运行增强的测试用例生成工作流"""
+    
+    try:
+        # 解析输入文件
+        figma_data = json.load(figma_file.file)
+        viewpoints_data = json.load(viewpoints_file.file)
+        
+        # 配置LLM客户端
+        llm_cfg = {
+            'provider': provider,
+            'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
+            'temperature': temperature
+        }
+        llm_client = LLMClient(**llm_cfg)
+        
+        # 运行增强工作流
+        result = run_enhanced_testcase_generation(figma_data, viewpoints_data, llm_client)
+        
+        return JSONResponse({
+            "success": True,
+            "workflow_result": result,
+            "modules_analysis": result.get("modules_analysis", {}),
+            "figma_viewpoints_mapping": result.get("figma_viewpoints_mapping", {}),
+            "checklist_mapping": result.get("checklist_mapping", []),
+            "test_purpose_validation": result.get("test_purpose_validation", []),
+            "quality_analysis": result.get("quality_analysis", {}),
+            "final_testcases": result.get("final_testcases", []),
+            "workflow_log": result.get("workflow_log", [])
+        })
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e),
+            "message": "增强工作流执行失败"
+        }, status_code=500)
+
+@app.get("/workflow_status/{workflow_id}")
+async def get_workflow_status(workflow_id: str):
+    """获取工作流执行状态"""
+    # 这里可以实现工作流状态查询
+    return JSONResponse({
+        "workflow_id": workflow_id,
+        "status": "completed",
+        "message": "工作流执行完成"
+    })
+
+@app.post("/run_enhanced_workflow_step/")
+async def run_enhanced_workflow_step(
+    step_name: str = Form(...),
+    state_data: UploadFile = None,
+    figma_file: UploadFile = None,
+    viewpoints_file: UploadFile = None,
+    provider: str = Form('gpt-4o'),
+    api_key: str = Form(None),
+    temperature: float = Form(0.2)
+):
+    """运行增强工作流的单个步骤"""
+    
+    try:
+        # 配置LLM客户端
+        llm_cfg = {
+            'provider': provider,
+            'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
+            'temperature': temperature
+        }
+        llm_client = LLMClient(**llm_cfg)
+        
+        # 根据步骤名称执行相应的节点
+        if step_name == "analyze_viewpoints_modules":
+            if viewpoints_file is None:
+                raise HTTPException(status_code=400, detail="需要提供测试观点文件")
+            viewpoints_data = json.load(viewpoints_file.file)
+            state = {"viewpoints_file": viewpoints_data}
+            from nodes.analyze_viewpoints_modules import analyze_viewpoints_modules
+            result = analyze_viewpoints_modules(state, llm_client)
+            
+        elif step_name == "map_figma_to_viewpoints":
+            if state_data is None or figma_file is None or viewpoints_file is None:
+                raise HTTPException(status_code=400, detail="需要提供状态数据、Figma文件和测试观点文件")
+            state = json.load(state_data.file)
+            figma_data = json.load(figma_file.file)
+            viewpoints_data = json.load(viewpoints_file.file)
+            state.update({
+                "figma_data": figma_data,
+                "viewpoints_file": viewpoints_data
+            })
+            from nodes.map_figma_to_viewpoints import map_figma_to_viewpoints
+            result = map_figma_to_viewpoints(state, llm_client)
+            
+        elif step_name == "map_checklist_to_figma_areas":
+            if state_data is None:
+                raise HTTPException(status_code=400, detail="需要提供状态数据")
+            state = json.load(state_data.file)
+            from nodes.map_checklist_to_figma_areas import map_checklist_to_figma_areas
+            result = map_checklist_to_figma_areas(state, llm_client)
+            
+        elif step_name == "validate_test_purpose_coverage":
+            if state_data is None:
+                raise HTTPException(status_code=400, detail="需要提供状态数据")
+            state = json.load(state_data.file)
+            from nodes.validate_test_purpose_coverage import validate_test_purpose_coverage
+            result = validate_test_purpose_coverage(state, llm_client)
+            
+        elif step_name == "deep_understanding_and_gap_analysis":
+            if state_data is None:
+                raise HTTPException(status_code=400, detail="需要提供状态数据")
+            state = json.load(state_data.file)
+            from nodes.deep_understanding_and_gap_analysis import deep_understanding_and_gap_analysis
+            result = deep_understanding_and_gap_analysis(state, llm_client)
+            
+        elif step_name == "generate_final_testcases":
+            if state_data is None:
+                raise HTTPException(status_code=400, detail="需要提供状态数据")
+            state = json.load(state_data.file)
+            from nodes.generate_final_testcases import generate_final_testcases
+            result = generate_final_testcases(state, llm_client)
+            
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的步骤名称: {step_name}")
+        
+        return JSONResponse({
+            "success": True,
+            "step_name": step_name,
+            "result": result
+        })
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e),
+            "message": f"步骤 {step_name} 执行失败"
+        }, status_code=500)

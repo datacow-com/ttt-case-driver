@@ -40,8 +40,34 @@ output:
   date_format: "YYYY/MM/DD"
   time_format: "HH:mm"
 
+# Redis配置 - 替代PostgreSQL
+redis:
+  url: "${REDIS_URL:-redis://localhost:6379}"
+  db: 0
+  max_connections: 10
+  socket_timeout: 5
+  socket_connect_timeout: 5
+  
+  # TTL配置
+  ttl:
+    session: 86400          # 24小时
+    node_result: 86400      # 24小时
+    feedback: 86400         # 24小时
+    workflow_state: 7200    # 2小时
+    figma_data: 7200        # 2小时
+    viewpoints: 7200        # 2小时
+    llm_call: 3600          # 1小时
+    cache: 3600             # 1小时
+  
+  # 缓存策略
+  strategy:
+    preload_frames: true     # 预加载所有Frame
+    cache_by_component: true # 按组件类型缓存
+    cache_analysis: true     # 缓存分析结果
+    cache_mappings: true     # 缓存映射关系
+
+# 存储配置（保留MinIO用于文件存储）
 storage:
-  postgres_url: "${POSTGRES_URL}"
   minio_url: "${MINIO_URL}"
   minio_access_key: "${MINIO_ACCESS_KEY}"
   minio_secret_key: "${MINIO_SECRET_KEY}"
