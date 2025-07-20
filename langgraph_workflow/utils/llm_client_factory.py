@@ -294,44 +294,72 @@ class LLMClientFactory:
 class SmartLLMClient:
     """スマートLLMクライアント - 自動フォールバックと負荷分散をサポート"""
     
-    def __init__(self, agent_name: str):
+    def __init__(self, agent_name: str, use_fallback: bool = False):
         self.agent_name = agent_name
         self.agent_config = config_loader.get_agent_config(agent_name)
         self.strategy = config_loader.get_llm_strategy()
+        self.use_fallback = use_fallback
         self._clients = {}
         self._init_clients()
     
     def _init_clients(self):
         """利用可能なすべてのクライアントを初期化"""
-        # メインクライアント
-        self._clients[self.agent_config.provider] = LLMClientFactory.create_client(
-            self.agent_config.provider, 
-            self.agent_config.model
-        )
-        
-        # フォールバッククライアント
-        for fallback_provider in self.agent_config.fallback_providers:
-            if fallback_provider not in self._clients:
-                provider_config = config_loader.get_provider_config(fallback_provider)
-                self._clients[fallback_provider] = LLMClientFactory.create_client(
-                    fallback_provider,
-                    provider_config.default_model
-                )
+        if self.use_fallback and self.agent_config.fallback_providers:
+            # 使用备用提供商作为主要提供商
+            fallback_provider = self.agent_config.fallback_providers[0]
+            provider_config = config_loader.get_provider_config(fallback_provider)
+            self._clients[fallback_provider] = LLMClientFactory.create_client(
+                fallback_provider,
+                provider_config.default_model
+            )
+            # 设置剩余的备用提供商
+            remaining_fallbacks = self.agent_config.fallback_providers[1:] + [self.agent_config.provider]
+            for provider in remaining_fallbacks:
+                if provider not in self._clients:
+                    provider_config = config_loader.get_provider_config(provider)
+                    self._clients[provider] = LLMClientFactory.create_client(
+                        provider,
+                        provider_config.default_model
+                    )
+        else:
+            # 标准初始化 - 使用主要提供商
+            self._clients[self.agent_config.provider] = LLMClientFactory.create_client(
+                self.agent_config.provider, 
+                self.agent_config.model
+            )
+            
+            # 初始化备用客户端
+            for fallback_provider in self.agent_config.fallback_providers:
+                if fallback_provider not in self._clients:
+                    provider_config = config_loader.get_provider_config(fallback_provider)
+                    self._clients[fallback_provider] = LLMClientFactory.create_client(
+                        fallback_provider,
+                        provider_config.default_model
+                    )
+    
+    def get_primary_provider(self):
+        """获取当前主要提供商"""
+        if self.use_fallback and self.agent_config.fallback_providers:
+            return self.agent_config.fallback_providers[0]
+        return self.agent_config.provider
     
     async def generate_async(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """スマート非同期生成"""
         start_time = time.time()
         
-        # メインクライアントを試す
+        # 获取当前主要提供商
+        primary_provider = self.get_primary_provider()
+        
+        # 尝试主要提供商
         try:
-            result = await self._clients[self.agent_config.provider].generate_async(
+            result = await self._clients[primary_provider].generate_async(
                 prompt, **kwargs
             )
             
-            # パフォーマンス統計を記録
+            # 记录性能统计
             response_time = time.time() - start_time
             performance_monitor.record_llm_call(
-                model=self.agent_config.model,
+                model=self._clients[primary_provider].model,
                 tokens_used=result.get("usage", {}).get("total_tokens", 0),
                 response_time=response_time,
                 success=True
@@ -340,14 +368,23 @@ class SmartLLMClient:
             return result
             
         except Exception as e:
-            # メインクライアントが失敗した場合、フォールバックを試す
-            for fallback_provider in self.agent_config.fallback_providers:
+            # 如果主要提供商失败，尝试备用提供商
+            fallback_providers = []
+            if primary_provider == self.agent_config.provider:
+                # 标准模式：使用配置的备用提供商
+                fallback_providers = self.agent_config.fallback_providers
+            else:
+                # 已经在使用备用模式：尝试其他备用提供商和主要提供商
+                remaining_fallbacks = [p for p in self.agent_config.fallback_providers if p != primary_provider]
+                fallback_providers = remaining_fallbacks + [self.agent_config.provider]
+                
+            for fallback_provider in fallback_providers:
                 try:
                     result = await self._clients[fallback_provider].generate_async(
                         prompt, **kwargs
                     )
                     
-                    # フォールバック統計を記録
+                    # 记录备用统计
                     response_time = time.time() - start_time
                     performance_monitor.record_llm_call(
                         model=f"{fallback_provider}-fallback",
@@ -361,31 +398,34 @@ class SmartLLMClient:
                 except Exception:
                     continue
             
-            # すべてのクライアントが失敗
+            # 所有客户端都失败
             response_time = time.time() - start_time
             performance_monitor.record_llm_call(
-                model=self.agent_config.model,
+                model=self._clients[primary_provider].model,
                 tokens_used=0,
                 response_time=response_time,
                 success=False
             )
             
-            raise Exception(f"すべてのLLMプロバイダーが失敗しました: {str(e)}")
+            raise Exception(f"所有LLM提供商都失败: {str(e)}")
     
     def generate_sync(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """スマート同期生成"""
         start_time = time.time()
         
-        # メインクライアントを試す
+        # 获取当前主要提供商
+        primary_provider = self.get_primary_provider()
+        
+        # 尝试主要提供商
         try:
-            result = self._clients[self.agent_config.provider].generate_sync(
+            result = self._clients[primary_provider].generate_sync(
                 prompt, **kwargs
             )
             
-            # パフォーマンス統計を記録
+            # 记录性能统计
             response_time = time.time() - start_time
             performance_monitor.record_llm_call(
-                model=self.agent_config.model,
+                model=self._clients[primary_provider].model,
                 tokens_used=result.get("usage", {}).get("total_tokens", 0),
                 response_time=response_time,
                 success=True
@@ -394,14 +434,23 @@ class SmartLLMClient:
             return result
             
         except Exception as e:
-            # メインクライアントが失敗した場合、フォールバックを試す
-            for fallback_provider in self.agent_config.fallback_providers:
+            # 如果主要提供商失败，尝试备用提供商
+            fallback_providers = []
+            if primary_provider == self.agent_config.provider:
+                # 标准模式：使用配置的备用提供商
+                fallback_providers = self.agent_config.fallback_providers
+            else:
+                # 已经在使用备用模式：尝试其他备用提供商和主要提供商
+                remaining_fallbacks = [p for p in self.agent_config.fallback_providers if p != primary_provider]
+                fallback_providers = remaining_fallbacks + [self.agent_config.provider]
+                
+            for fallback_provider in fallback_providers:
                 try:
                     result = self._clients[fallback_provider].generate_sync(
                         prompt, **kwargs
                     )
                     
-                    # フォールバック統計を記録
+                    # 记录备用统计
                     response_time = time.time() - start_time
                     performance_monitor.record_llm_call(
                         model=f"{fallback_provider}-fallback",
@@ -415,16 +464,16 @@ class SmartLLMClient:
                 except Exception:
                     continue
             
-            # すべてのクライアントが失敗
+            # 所有客户端都失败
             response_time = time.time() - start_time
             performance_monitor.record_llm_call(
-                model=self.agent_config.model,
+                model=self._clients[primary_provider].model,
                 tokens_used=0,
                 response_time=response_time,
                 success=False
             )
             
-            raise Exception(f"すべてのLLMプロバイダーが失敗しました: {str(e)}")
+            raise Exception(f"所有LLM提供商都失败: {str(e)}")
             
     def get_usage_stats(self) -> Dict[str, Any]:
         """使用統計を取得"""
