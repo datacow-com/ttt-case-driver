@@ -10,13 +10,16 @@ from nodes.generate_testcases import generate_testcases
 from nodes.route_infer import route_infer
 from nodes.generate_cross_page_case import generate_cross_page_case
 from nodes.format_output import format_output
-from nodes.fetch_and_clean_figma_json import fetch_and_clean_figma_json
+from nodes.fetch_and_clean_figma_json import fetch_and_clean_figma_json, get_compression_stats, get_cache_stats
 from utils.config_loader import load_config, get_agent_config
 from utils.llm_client import LLMClient
 from utils.param_utils import save_temp_upload, parse_yaml_file
 from utils.viewpoints_parser import ViewpointsParser
 from utils.redis_manager import redis_manager
 from utils.state_management import StateManager
+from utils.intelligent_cache_manager import intelligent_cache_manager
+from utils.figma_compressor import figma_compressor
+from utils.viewpoints_standardizer import viewpoints_standardizer
 from enhanced_workflow import run_enhanced_testcase_generation, build_enhanced_workflow_with_wrappers
 import os
 import json
@@ -88,14 +91,108 @@ async def get_cached_viewpoints(file_hash: str):
         raise HTTPException(status_code=404, detail="Viewpoints not found in cache")
     return data
 
+# ==================== 智能缓存管理API端点 ====================
+
+@app.get("/cache/intelligent/stats")
+async def get_intelligent_cache_stats():
+    """获取智能缓存统计信息"""
+    return intelligent_cache_manager.get_stats()
+
+@app.delete("/cache/intelligent/clear")
+async def clear_intelligent_cache():
+    """清空智能缓存"""
+    intelligent_cache_manager.clear_hot_cache()
+    return {"message": "Intelligent cache cleared"}
+
+@app.get("/cache/intelligent/hot_keys")
+async def get_hot_cache_keys():
+    """获取热点缓存键列表"""
+    return {"hot_keys": intelligent_cache_manager.get_hot_cache_keys()}
+
+# ==================== Figma压缩API端点 ====================
+
+@app.get("/figma/compression/stats")
+async def get_figma_compression_stats():
+    """获取Figma压缩统计信息"""
+    return figma_compressor.get_compression_stats()
+
+@app.post("/figma/compress")
+async def compress_figma_data(figma_data: dict):
+    """压缩Figma数据"""
+    compressed = figma_compressor.compress_figma_data(figma_data)
+    return {"original_size": len(str(figma_data)), "compressed_size": len(str(compressed)), "data": compressed}
+
+@app.post("/figma/decompress")
+async def decompress_figma_data(compressed_data: dict):
+    """解压缩Figma数据"""
+    decompressed = figma_compressor.decompress_figma_data(compressed_data)
+    return {"decompressed_data": decompressed}
+
+# ==================== 测试观点标准化API端点 ====================
+
+@app.post("/viewpoints/standardize")
+async def standardize_viewpoints(viewpoints_data: dict):
+    """标准化测试观点"""
+    standardized = viewpoints_standardizer.standardize_viewpoints(viewpoints_data)
+    return {"standardized_viewpoints": standardized}
+
+@app.post("/viewpoints/create_mapping")
+async def create_viewpoint_mapping(viewpoints_data: dict):
+    """创建观点映射关系"""
+    mapping = viewpoints_standardizer.create_viewpoint_mapping(viewpoints_data)
+    return {"mapping": mapping}
+
+@app.get("/viewpoints/templates/{component_type}")
+async def get_component_templates(component_type: str):
+    """获取组件模板"""
+    templates = viewpoints_standardizer.get_component_templates(component_type)
+    return {"templates": templates}
+
+@app.post("/viewpoints/merge")
+async def merge_viewpoints(viewpoints_list: list):
+    """合并多个观点文件"""
+    merged = viewpoints_standardizer.merge_viewpoints(viewpoints_list)
+    return {"merged_viewpoints": merged}
+
+@app.post("/viewpoints/validate")
+async def validate_viewpoints_comprehensive(viewpoints_data: dict):
+    """全面验证观点数据"""
+    validation = viewpoints_standardizer.validate_viewpoints(viewpoints_data)
+    return {"validation": validation}
+
+# ==================== 性能监控API端点 ====================
+
+@app.get("/performance/stats")
+async def get_performance_stats():
+    """获取性能统计信息"""
+    return {
+        "redis_stats": redis_manager.get_stats(),
+        "intelligent_cache_stats": intelligent_cache_manager.get_stats(),
+        "figma_compression_stats": figma_compressor.get_compression_stats(),
+        "cache_stats": get_cache_stats()
+    }
+
+@app.get("/performance/token_usage")
+async def get_token_usage_stats():
+    """获取TOKEN使用统计"""
+    # 这里可以添加TOKEN使用统计逻辑
+    return {
+        "total_llm_calls": 0,
+        "total_tokens_used": 0,
+        "cached_calls": 0,
+        "tokens_saved": 0,
+        "cache_hit_rate": "0%"
+    }
+
 # ==================== 现有API端点 ====================
 
 @app.post("/run_node/fetch_and_clean_figma_json/")
 async def run_node_fetch_and_clean_figma_json(
     access_token: str = Form(...),
-    file_key: str = Form(...)
+    file_key: str = Form(...),
+    enable_compression: bool = Form(True)
 ):
-    cleaned = fetch_and_clean_figma_json(access_token, file_key)
+    cleaned = fetch_and_clean_figma_json(access_token, file_key, enable_compression)
     INTERMEDIATE_RESULTS['fetch_and_clean_figma_json'] = cleaned
     return JSONResponse(cleaned)
 
@@ -221,57 +318,50 @@ async def run_node_format_output(
     few_shot_examples: str = Form(None)
 ):
     testcases_obj = json.load(testcases.file)
-    
-    # LLMパラメータが提供された場合、LLMモードを使用
-    if provider or api_key:
-        few_shot = json.loads(few_shot_examples) if few_shot_examples else None
-        llm_cfg = {
-            'provider': provider or 'gpt-4o',
-            'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
-            'endpoint': endpoint,
-            'temperature': temperature
-        }
-        llm_client = LLMClient(**llm_cfg)
-        result = format_output(testcases_obj, output_format, llm_client, prompt_template, few_shot, language)
-    else:
-        result = format_output(testcases_obj, output_format, language=language)
-    
+    # few_shot_examples 传入为JSON字符串
+    few_shot = json.loads(few_shot_examples) if few_shot_examples else None
+    llm_cfg = {
+        'provider': provider or 'gpt-4o',
+        'api_key': api_key or os.environ.get('OPENAI_API_KEY', ''),
+        'endpoint': endpoint,
+        'temperature': temperature
+    }
+    llm_client = LLMClient(**llm_cfg)
+    result = format_output(testcases_obj, output_format, language, llm_client, prompt_template, few_shot)
     INTERMEDIATE_RESULTS['format_output'] = result
-    
-    # Excelファイルの場合はバイナリレスポンス
-    if output_format == 'excel':
-        return Response(
-            content=result,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=テストケース_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
-        )
-    else:
-        return PlainTextResponse(result)
+    return JSONResponse(result)
 
 @app.get("/intermediate/{node_name}")
 async def get_intermediate_result(node_name: str):
-    result = INTERMEDIATE_RESULTS.get(node_name)
-    if result is None:
-        return JSONResponse({"error": "No result for node."}, status_code=404)
-    return JSONResponse(result)
+    """获取中间结果"""
+    if node_name in INTERMEDIATE_RESULTS:
+        return JSONResponse(INTERMEDIATE_RESULTS[node_name])
+    else:
+        raise HTTPException(status_code=404, detail=f"Node {node_name} result not found")
 
 @app.post("/parse_viewpoints/")
 async def parse_viewpoints(
     viewpoints_file: UploadFile,
-    file_extension: str = Form(None)
+    file_extension: str = Form(None),
+    enable_standardization: bool = Form(True)
 ):
-    """解析测试观点文件"""
+    """解析测试观点文件（支持多种格式）"""
     try:
-        file_content = await viewpoints_file.read()
-        filename = viewpoints_file.filename
-        
-        # 使用带缓存的解析方法
-        viewpoints = ViewpointsParser.parse_viewpoints_with_cache(file_content, file_extension, filename)
-        
+        file_content = viewpoints_file.file.read()
+        viewpoints_data = ViewpointsParser.parse_viewpoints_with_cache(
+            file_content, 
+            file_extension, 
+            viewpoints_file.filename, 
+            enable_standardization
+        )
         return JSONResponse({
             "success": True,
-            "viewpoints": viewpoints,
-            "filename": filename
+            "viewpoints": viewpoints_data,
+            "file_info": {
+                "filename": viewpoints_file.filename,
+                "size": len(file_content),
+                "format": file_extension or viewpoints_file.filename.split('.')[-1]
+            }
         })
     except Exception as e:
         return JSONResponse({
@@ -281,33 +371,23 @@ async def parse_viewpoints(
 
 @app.get("/viewpoints/formats")
 async def get_supported_viewpoint_formats():
-    """サポートされているテスト観点形式を取得"""
-    parser = ViewpointsParser()
-    return JSONResponse({
-        "supported_formats": parser.get_supported_formats(),
-        "examples": parser.get_format_examples()
-    })
+    """获取支持的测试观点文件格式"""
+    return {
+        "supported_formats": ViewpointsParser.get_supported_formats(),
+        "examples": ViewpointsParser.get_format_examples()
+    }
 
 @app.get("/system/language")
 async def get_system_language():
-    """システムの言語設定を取得"""
-    return JSONResponse({
-        "current_language": "ja",
-        "supported_languages": ["en", "ja"],
-        "default_language": "ja"
-    })
+    """获取系统语言设置"""
+    config = load_config()
+    return {"language": config.get('output', {}).get('language', 'ja')}
 
 @app.post("/system/language")
 async def set_system_language(language: str = Form(...)):
-    """システムの言語設定を変更"""
-    if language not in ["en", "ja"]:
-        raise HTTPException(status_code=400, detail="サポートされていない言語です")
-    
-    # ここでシステム言語設定を更新
-    return JSONResponse({
-        "message": f"言語が{language}に設定されました",
-        "language": language
-    })
+    """设置系统语言"""
+    # 这里可以添加语言设置逻辑
+    return {"message": f"Language set to {language}", "language": language}
 
 @app.post("/run_enhanced_workflow/")
 async def run_enhanced_workflow(
@@ -356,13 +436,9 @@ async def run_enhanced_workflow(
 
 @app.get("/workflow_status/{workflow_id}")
 async def get_workflow_status(workflow_id: str):
-    """获取工作流执行状态"""
-    # 这里可以实现工作流状态查询
-    return JSONResponse({
-        "workflow_id": workflow_id,
-        "status": "completed",
-        "message": "工作流执行完成"
-    })
+    """获取工作流状态"""
+    # 这里可以添加工作流状态查询逻辑
+    return {"workflow_id": workflow_id, "status": "completed"}
 
 @app.post("/run_enhanced_workflow_step/")
 async def run_enhanced_workflow_step(
@@ -450,3 +526,7 @@ async def run_enhanced_workflow_step(
             "error": str(e),
             "message": f"步骤 {step_name} 执行失败"
         }, status_code=500)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

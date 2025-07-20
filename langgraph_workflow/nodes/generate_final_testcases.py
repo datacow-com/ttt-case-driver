@@ -2,17 +2,43 @@ from typing import Dict, Any, List
 import json
 import sys
 import os
+import hashlib
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.llm_client import LLMClient
 from state_management import StateManager
+from utils.cache_manager import cache_llm_call, cache_manager
 
+def generate_cache_key(state: Dict[str, Any]) -> str:
+    """生成缓存键"""
+    viewpoints_file = state.get("viewpoints_file", {})
+    checklist_mapping = state.get("checklist_mapping", [])
+    quality_analysis = state.get("quality_analysis", {})
+    test_purpose_validation = state.get("test_purpose_validation", [])
+    
+    content = {
+        "viewpoints_file": viewpoints_file,
+        "checklist_mapping": checklist_mapping,
+        "quality_analysis": quality_analysis,
+        "test_purpose_validation": test_purpose_validation
+    }
+    return hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+@cache_llm_call(ttl=3600)  # 缓存LLM调用结果1小时
 def generate_final_testcases(state: Dict[str, Any], llm_client: LLMClient) -> Dict[str, Any]:
     """
-    第六步：基于完整分析生成最终测试用例
+    第六步：基于完整分析生成最终测试用例（带缓存）
     """
+    # 生成缓存键
+    cache_key = generate_cache_key(state)
+    
+    # 检查缓存
+    cached_result = cache_manager.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    
     viewpoints_file = state["viewpoints_file"]
     checklist_mapping = state["checklist_mapping"]
     quality_analysis = state["quality_analysis"]
@@ -190,12 +216,17 @@ def generate_final_testcases(state: Dict[str, Any], llm_client: LLMClient) -> Di
             final_testcases.append(error_additional)
             test_case_id += 1
     
+    # 更新状态
     updated_state = StateManager.update_state(state, {
         "final_testcases": final_testcases
     })
     
+    # 记录日志
     updated_state = StateManager.log_step(updated_state, 
         "generate_final_testcases", 
-        f"成功生成 {len(final_testcases)} 个测试用例")
+        f"成功生成 {len(final_testcases)} 个最终测试用例")
     
-    return updated_state 
+    # 缓存结果
+    cache_manager.set(cache_key, updated_state, ttl=3600)
+    
+    return updated_state

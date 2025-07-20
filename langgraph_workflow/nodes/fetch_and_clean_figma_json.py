@@ -2,6 +2,8 @@ import requests
 from typing import Any, Dict, Set
 from fastapi import HTTPException
 from utils.cache_manager import cache_result, cache_manager
+from utils.figma_compressor import figma_compressor
+from utils.intelligent_cache_manager import intelligent_cache_manager
 
 @cache_result(prefix="figma_raw", ttl=7200)  # 原始Figma数据缓存2小时
 def fetch_figma_json(access_token: str, file_key: str) -> Dict[str, Any]:
@@ -31,17 +33,36 @@ def clean_figma_json(figma_json: Dict[str, Any], keep_types: Set[str] = None) ->
     cleaned = filter_node(doc)
     return cleaned
 
-def fetch_and_clean_figma_json(access_token: str, file_key: str) -> Dict[str, Any]:
-    """获取并清理Figma JSON数据（带缓存）"""
+def fetch_and_clean_figma_json(access_token: str, file_key: str, enable_compression: bool = True) -> Dict[str, Any]:
+    """获取并清理Figma JSON数据（带缓存和压缩）"""
+    # 使用智能缓存管理器
+    cache_key = f"figma_processed_{file_key}_{enable_compression}"
+    cached_result = intelligent_cache_manager.get_with_intelligence(cache_key)
+    if cached_result is not None:
+        return cached_result
+    
+    # 获取原始数据
     raw_json = fetch_figma_json(access_token, file_key)
+    
+    # 清理数据
     cleaned = clean_figma_json(raw_json)
     
-    # 缓存清理后的数据
-    cache_manager.cache_figma_data(file_key, cleaned, ttl=7200)
+    # 压缩数据（如果启用）
+    if enable_compression:
+        compressed = figma_compressor.compress_figma_data(cleaned)
+        result = compressed
+    else:
+        result = cleaned
     
-    return cleaned
+    # 缓存结果
+    intelligent_cache_manager.set_with_intelligence(cache_key, result, ttl=7200)
+    
+    # 同时缓存到Redis
+    cache_manager.cache_figma_data(file_key, result, ttl=7200)
+    
+    return result
 
-# 新增：Frame级别的缓存
+# Frame级别的缓存
 def get_frame_cache_key(file_key: str, frame_id: str) -> str:
     """生成Frame级别的缓存键"""
     return f"figma_frame_{file_key}_{frame_id}"
@@ -53,3 +74,37 @@ def cache_frame_data(file_key: str, frame_id: str, frame_data: Dict[str, Any], t
 def get_cached_frame_data(file_key: str, frame_id: str) -> Dict[str, Any]:
     """获取缓存的Frame数据"""
     return cache_manager.get_frame_data(file_key, frame_id)
+
+# 新增：批量Frame预加载
+def preload_frames(file_key: str, frame_ids: List[str], access_token: str):
+    """预加载多个Frame数据"""
+    for frame_id in frame_ids:
+        # 检查是否已缓存
+        if get_cached_frame_data(file_key, frame_id) is None:
+            try:
+                # 获取单个Frame数据
+                frame_data = fetch_single_frame(access_token, file_key, frame_id)
+                if frame_data:
+                    cache_frame_data(file_key, frame_id, frame_data)
+            except Exception as e:
+                print(f"预加载Frame {frame_id} 失败: {e}")
+
+def fetch_single_frame(access_token: str, file_key: str, frame_id: str) -> Dict[str, Any]:
+    """获取单个Frame数据"""
+    url = f"https://api.figma.com/v1/files/{file_key}/nodes?ids={frame_id}"
+    headers = {"X-Figma-Token": access_token}
+    resp = requests.get(url, headers=headers)
+    if resp.status_code == 200:
+        data = resp.json()
+        return data.get("nodes", {}).get(frame_id, {})
+    return None
+
+# 新增：获取压缩统计信息
+def get_compression_stats() -> Dict[str, Any]:
+    """获取压缩统计信息"""
+    return figma_compressor.get_compression_stats()
+
+# 新增：获取缓存统计信息
+def get_cache_stats() -> Dict[str, Any]:
+    """获取缓存统计信息"""
+    return intelligent_cache_manager.get_stats()

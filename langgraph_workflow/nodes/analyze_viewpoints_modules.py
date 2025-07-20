@@ -2,17 +2,36 @@ from typing import Dict, Any
 import json
 import sys
 import os
+import hashlib
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.llm_client import LLMClient
 from state_management import StateManager
+from utils.cache_manager import cache_llm_call, cache_manager
 
+def generate_cache_key(state: Dict[str, Any]) -> str:
+    """生成缓存键"""
+    viewpoints_file = state.get("viewpoints_file", {})
+    content = {
+        "viewpoints_file": viewpoints_file
+    }
+    return hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+@cache_llm_call(ttl=3600)  # 缓存LLM调用结果1小时
 def analyze_viewpoints_modules(state: Dict[str, Any], llm_client: LLMClient) -> Dict[str, Any]:
     """
-    第一步：理解测试观点文件，识别模块，检查完整性
+    第一步：理解测试观点文件，识别模块，检查完整性（带缓存）
     """
+    # 生成缓存键
+    cache_key = generate_cache_key(state)
+    
+    # 检查缓存
+    cached_result = cache_manager.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    
     viewpoints_file = state["viewpoints_file"]
     
     prompt = f"""
@@ -63,6 +82,9 @@ def analyze_viewpoints_modules(state: Dict[str, Any], llm_client: LLMClient) -> 
             "analyze_viewpoints_modules", 
             f"成功分析 {len(analysis_result.get('modules', []))} 个模块")
         
+        # 缓存结果
+        cache_manager.set(cache_key, updated_state, ttl=3600)
+        
         return updated_state
         
     except Exception as e:
@@ -83,4 +105,7 @@ def analyze_viewpoints_modules(state: Dict[str, Any], llm_client: LLMClient) -> 
             "analyze_viewpoints_modules", 
             f"分析失败: {str(e)}")
         
-        return updated_state 
+        # 缓存错误结果
+        cache_manager.set(cache_key, updated_state, ttl=1800)
+        
+        return updated_state

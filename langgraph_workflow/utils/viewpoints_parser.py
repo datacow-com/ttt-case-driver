@@ -6,26 +6,36 @@ from typing import Dict, Any, List, Union, Optional
 from fastapi import HTTPException
 import hashlib
 from utils.cache_manager import cache_result, cache_manager
+from utils.viewpoints_standardizer import viewpoints_standardizer
+from utils.intelligent_cache_manager import intelligent_cache_manager
 
 class ViewpointsParser:
-    """测试观点解析器，支持多种格式输入"""
+    """测试观点解析器，支持多种格式输入和标准化"""
     
     @staticmethod
     @cache_result(prefix="viewpoints_parsed", ttl=7200)  # 解析结果缓存2小时
-    def parse_viewpoints(file_content: bytes, file_extension: str = None, filename: str = None) -> Dict[str, Any]:
-        """解析测试观点文件（带缓存）"""
+    def parse_viewpoints(file_content: bytes, file_extension: str = None, filename: str = None, enable_standardization: bool = True) -> Dict[str, Any]:
+        """解析测试观点文件（带缓存和标准化）"""
         # 文件格式检测
         format_type = ViewpointsParser._detect_format(file_extension, filename)
         
         try:
             if format_type == 'json':
-                return ViewpointsParser._parse_json(file_content)
+                raw_viewpoints = ViewpointsParser._parse_json(file_content)
             elif format_type == 'csv':
-                return ViewpointsParser._parse_csv(file_content)
+                raw_viewpoints = ViewpointsParser._parse_csv(file_content)
             elif format_type == 'excel':
-                return ViewpointsParser._parse_excel(file_content)
+                raw_viewpoints = ViewpointsParser._parse_excel(file_content)
             else:
                 raise HTTPException(status_code=400, detail=f"不支持的文件格式: {format_type}")
+            
+            # 标准化处理
+            if enable_standardization:
+                standardized_viewpoints = viewpoints_standardizer.standardize_viewpoints(raw_viewpoints)
+                return standardized_viewpoints
+            else:
+                return raw_viewpoints
+                
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"测试观点文件解析失败: {str(e)}")
     
@@ -242,41 +252,66 @@ INPUT         | 格式验证
     def cache_viewpoints_by_component(component_type: str, viewpoints: List[Dict[str, Any]], ttl: int = 3600):
         """按组件类型缓存测试观点"""
         cache_key = f"viewpoints_component_{component_type}"
-        cache_manager.set(cache_key, viewpoints, ttl)
+        intelligent_cache_manager.set_with_intelligence(cache_key, viewpoints, ttl)
     
     @staticmethod
     def get_cached_viewpoints_by_component(component_type: str) -> Optional[List[Dict[str, Any]]]:
         """获取按组件类型缓存的测试观点"""
         cache_key = f"viewpoints_component_{component_type}"
-        return cache_manager.get(cache_key)
+        return intelligent_cache_manager.get_with_intelligence(cache_key)
     
     @staticmethod
     def cache_viewpoints_analysis(analysis_result: Dict[str, Any], ttl: int = 1800):
         """缓存测试观点分析结果"""
         cache_key = "viewpoints_analysis"
-        cache_manager.set(cache_key, analysis_result, ttl)
+        intelligent_cache_manager.set_with_intelligence(cache_key, analysis_result, ttl)
     
     @staticmethod
     def get_cached_viewpoints_analysis() -> Optional[Dict[str, Any]]:
         """获取缓存的测试观点分析结果"""
         cache_key = "viewpoints_analysis"
-        return cache_manager.get(cache_key)
+        return intelligent_cache_manager.get_with_intelligence(cache_key)
     
     @staticmethod
-    def parse_viewpoints_with_cache(file_content: bytes, file_extension: str = None, filename: str = None) -> Dict[str, Any]:
+    def parse_viewpoints_with_cache(file_content: bytes, file_extension: str = None, filename: str = None, enable_standardization: bool = True) -> Dict[str, Any]:
         """带缓存的测试观点解析"""
         # 生成文件哈希
         file_hash = ViewpointsParser._generate_file_hash(file_content)
         
-        # 尝试从缓存获取
-        cached_viewpoints = cache_manager.get_viewpoints(file_hash)
+        # 使用智能缓存管理器
+        cache_key = f"viewpoints_{file_hash}_{enable_standardization}"
+        cached_viewpoints = intelligent_cache_manager.get_with_intelligence(cache_key)
         if cached_viewpoints is not None:
             return cached_viewpoints
         
         # 解析文件
-        viewpoints = ViewpointsParser.parse_viewpoints(file_content, file_extension, filename)
+        viewpoints = ViewpointsParser.parse_viewpoints(file_content, file_extension, filename, enable_standardization)
         
         # 缓存结果
+        intelligent_cache_manager.set_with_intelligence(cache_key, viewpoints, ttl=7200)
+        
+        # 同时缓存到Redis
         cache_manager.cache_viewpoints(file_hash, viewpoints, ttl=7200)
         
         return viewpoints
+    
+    # ==================== 标准化相关方法 ====================
+    @staticmethod
+    def create_viewpoint_mapping(viewpoints_data: Dict[str, Any]) -> Dict[str, Any]:
+        """创建观点映射关系"""
+        return viewpoints_standardizer.create_viewpoint_mapping(viewpoints_data)
+    
+    @staticmethod
+    def get_component_templates(component_type: str) -> List[Dict[str, Any]]:
+        """获取组件模板"""
+        return viewpoints_standardizer.get_component_templates(component_type)
+    
+    @staticmethod
+    def merge_viewpoints(viewpoints_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """合并多个观点文件"""
+        return viewpoints_standardizer.merge_viewpoints(viewpoints_list)
+    
+    @staticmethod
+    def validate_viewpoints_comprehensive(viewpoints_data: Dict[str, Any]) -> Dict[str, Any]:
+        """全面验证观点数据"""
+        return viewpoints_standardizer.validate_viewpoints(viewpoints_data)

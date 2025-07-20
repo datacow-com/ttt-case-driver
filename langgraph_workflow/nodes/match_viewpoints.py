@@ -1,5 +1,8 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from utils.prompt_loader import PromptManager
+from utils.cache_manager import cache_llm_call, cache_manager
+import hashlib
+import json
 
 def build_prompt(system_prompt: str, few_shot_examples: list, current_input: str) -> str:
     prompt = system_prompt + '\n'
@@ -8,10 +11,29 @@ def build_prompt(system_prompt: str, few_shot_examples: list, current_input: str
     prompt += f"当前输入:\n{current_input}\n请生成输出："
     return prompt
 
+def generate_cache_key(clean_json: Dict, viewpoints_db: Dict, prompt_template: str, few_shot_examples: list) -> str:
+    """生成缓存键"""
+    content = {
+        "clean_json": clean_json,
+        "viewpoints_db": viewpoints_db,
+        "prompt_template": prompt_template,
+        "few_shot_examples": few_shot_examples
+    }
+    return hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+@cache_llm_call(ttl=3600)  # 缓存LLM调用结果1小时
 def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any], llm_client=None, prompt_template: str = None, few_shot_examples: list = None) -> Dict[str, Any]:
     """
-    为每个组件匹配测试观点，支持LLM智能匹配
+    为每个组件匹配测试观点，支持LLM智能匹配（带缓存）
     """
+    # 生成缓存键
+    cache_key = generate_cache_key(clean_json, viewpoints_db, prompt_template, few_shot_examples)
+    
+    # 检查缓存
+    cached_result = cache_manager.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    
     if llm_client:
         # 使用LLM智能匹配
         prompt_manager = PromptManager()
@@ -56,7 +78,11 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any], 
                 traverse(child)
         
         traverse(clean_json)
-        return {'component_viewpoints': results}
+        result = {'component_viewpoints': results}
+        
+        # 缓存结果
+        cache_manager.set(cache_key, result, ttl=3600)
+        return result
     else:
         # 原有的规则匹配逻辑
         def traverse(node, results):
@@ -73,4 +99,8 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any], 
                 traverse(child, results)
         results = []
         traverse(clean_json, results)
-        return {'component_viewpoints': results}
+        result = {'component_viewpoints': results}
+        
+        # 缓存结果
+        cache_manager.set(cache_key, result, ttl=3600)
+        return result

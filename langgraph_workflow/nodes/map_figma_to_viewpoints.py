@@ -2,17 +2,41 @@ from typing import Dict, Any
 import json
 import sys
 import os
+import hashlib
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.llm_client import LLMClient
 from state_management import StateManager
+from utils.cache_manager import cache_llm_call, cache_manager
 
+def generate_cache_key(state: Dict[str, Any]) -> str:
+    """生成缓存键"""
+    figma_data = state.get("figma_data", {})
+    viewpoints_file = state.get("viewpoints_file", {})
+    modules_analysis = state.get("modules_analysis", {})
+    
+    content = {
+        "figma_data": figma_data,
+        "viewpoints_file": viewpoints_file,
+        "modules_analysis": modules_analysis
+    }
+    return hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+@cache_llm_call(ttl=3600)  # 缓存LLM调用结果1小时
 def map_figma_to_viewpoints(state: Dict[str, Any], llm_client: LLMClient) -> Dict[str, Any]:
     """
-    第二步：将Figma文件与测试观点模块进行映射
+    第二步：将Figma文件与测试观点模块进行映射（带缓存）
     """
+    # 生成缓存键
+    cache_key = generate_cache_key(state)
+    
+    # 检查缓存
+    cached_result = cache_manager.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    
     figma_data = state["figma_data"]
     viewpoints_file = state["viewpoints_file"]
     modules_analysis = state["modules_analysis"]
@@ -54,25 +78,31 @@ def map_figma_to_viewpoints(state: Dict[str, Any], llm_client: LLMClient) -> Dic
     
     try:
         mapping_result = llm_client.generate(prompt)
-        
+        # 尝试解析JSON结果
         if isinstance(mapping_result, str):
             mapping_result = json.loads(mapping_result)
         
+        # 更新状态
         updated_state = StateManager.update_state(state, {
             "figma_viewpoints_mapping": mapping_result
         })
         
+        # 记录日志
         updated_state = StateManager.log_step(updated_state, 
             "map_figma_to_viewpoints", 
             f"成功映射 {len(mapping_result.get('module_mapping', []))} 个模块")
         
+        # 缓存结果
+        cache_manager.set(cache_key, updated_state, ttl=3600)
+        
         return updated_state
         
     except Exception as e:
+        # 错误处理
         error_result = {
             "module_mapping": [],
-            "coverage_gaps": ["映射分析失败"],
-            "recommendations": ["请检查Figma文件格式"],
+            "coverage_gaps": [],
+            "recommendations": ["映射过程中出现错误"],
             "mapping_quality_score": 0
         }
         
@@ -84,4 +114,7 @@ def map_figma_to_viewpoints(state: Dict[str, Any], llm_client: LLMClient) -> Dic
             "map_figma_to_viewpoints", 
             f"映射失败: {str(e)}")
         
-        return updated_state 
+        # 缓存错误结果
+        cache_manager.set(cache_key, updated_state, ttl=1800)
+        
+        return updated_state
