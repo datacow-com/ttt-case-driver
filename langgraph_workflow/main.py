@@ -390,27 +390,57 @@ async def run_node_load_page(
         # 解析Figma数据
         figma_data = json.loads(figma_yaml)
         
-        # 提取所有Frame
-        from nodes.load_page import extract_frames, process_figma_data
-        frames = extract_frames(figma_data)
+        # 提取所有页面和Frame
+        from nodes.load_page import extract_pages_and_frames, extract_frames_from_node
+        pages, frames = extract_pages_and_frames(figma_data)
         
         # 如果只需要提取Frame（用于手动选择）
         if extract_frames_only:
-            # 准备Frame选项列表（用于UI显示）
-            frame_options = [
-                {"value": frame["id"], "label": f"{frame['path']} ({frame['type']})"} 
-                for frame in frames
-            ]
+            # 按页面组织Frame选项
+            page_frame_options = {}
+            for page in pages:
+                page_id = page["id"]
+                page_name = page["name"]
+                page_frame_options[page_id] = {
+                    "page_name": page_name,
+                    "frames": []
+                }
+            
+            # 将Frame按页面分组
+            for frame in frames:
+                page_id = frame.get("page_id")
+                if page_id in page_frame_options:
+                    # 添加Frame信息，包括组件统计
+                    frame_option = {
+                        "value": frame["id"],
+                        "label": f"{frame['path']} ({frame['type']})",
+                        "children_count": frame.get("children_count", 0),
+                        "has_interactive": frame.get("has_interactive", False)
+                    }
+                    page_frame_options[page_id]["frames"].append(frame_option)
+            
+            # 转换为UI友好的格式
+            ui_frame_options = []
+            for page_id, page_data in page_frame_options.items():
+                if page_data["frames"]:  # 只添加有Frame的页面
+                    page_group = {
+                        "group": page_data["page_name"],
+                        "options": page_data["frames"]
+                    }
+                    ui_frame_options.append(page_group)
             
             # 缓存原始Figma数据，以便后续处理
             figma_cache_id = cache_node_data(figma_data, "figma_data")
             
             return JSONResponse({
-                "available_frames": frame_options,
-                "cache_id": figma_cache_id
+                "available_frames": ui_frame_options,
+                "cache_id": figma_cache_id,
+                "pages": pages,
+                "frames_count": len(frames)
             })
         
         # 正常处理（不需要手动选择Frame）
+        from nodes.load_page import process_figma_data
         processed_data = process_figma_data(figma_data)
         
         # 缓存结果
@@ -425,7 +455,9 @@ async def run_node_load_page(
         return JSONResponse({
             "content": processed_data,
             "cache_id": result_cache_id,
-            "available_frames": frame_options
+            "available_frames": frame_options,
+            "pages": pages,
+            "frames_count": len(frames)
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理Figma数据失败: {str(e)}")
@@ -449,10 +481,23 @@ async def run_node_process_selected_frames(
         # 缓存处理结果
         result_cache_id = cache_node_data(processed_data, "selected_frames_result")
         
+        # 获取选定Frame所属的页面
+        selected_pages = set()
+        for frame in processed_data.get("frames", []):
+            if "page_id" in frame and frame["page_id"]:
+                selected_pages.add(frame["page_id"])
+        
+        # 统计选定Frame中的组件数量
+        component_count = len(processed_data.get("components", []))
+        component_types = len(processed_data.get("component_categories", {}))
+        
         return JSONResponse({
             "content": processed_data,
             "cache_id": result_cache_id,
-            "selected_frame_count": len(selected_frames)
+            "selected_frame_count": len(selected_frames),
+            "selected_page_count": len(selected_pages),
+            "component_count": component_count,
+            "component_type_count": component_types
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理选定Frame失败: {str(e)}")

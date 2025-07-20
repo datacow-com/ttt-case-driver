@@ -63,13 +63,19 @@
 				"priority": "high",
 				"data": {
 					"title": "选择需要测试的Frame",
-					"description": "请从下面的列表中选择需要包含在测试中的Frame",
+					"description": "请从下面的列表中选择需要包含在测试中的Frame，按页面分组显示",
 					"fields": [
 						{
 							"name": "selected_frames",
 							"type": "checkboxes",
 							"options": "{{load_page.response.available_frames}}",
-							"required": true
+							"required": true,
+							"description": "已找到 {{load_page.response.frames_count}} 个Frame，分布在 {{load_page.response.pages.length}} 个页面中"
+						},
+						{
+							"name": "selection_info",
+							"type": "display",
+							"content": "选择包含交互元素的Frame可以获得更好的测试效果。交互元素包括按钮、输入框、链接等。"
 						}
 					]
 				},
