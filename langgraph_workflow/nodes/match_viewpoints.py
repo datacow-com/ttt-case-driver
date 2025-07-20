@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from utils.prompt_loader import PromptManager
 from utils.cache_manager import cache_llm_call, cache_manager
 from utils.llm_client_factory import SmartLLMClient
@@ -13,19 +13,20 @@ def build_prompt(system_prompt: str, few_shot_examples: list, current_input: str
     prompt += f"Current Input:\n{current_input}\nOutput:"
     return prompt
 
-def generate_cache_key(clean_json: Dict, viewpoints_db: Dict, agent_name: str) -> str:
+def generate_cache_key(clean_json: Dict, viewpoints_db: Dict, agent_name: str, selected_frames: Optional[List[str]] = None) -> str:
     """キャッシュキーを生成する"""
     content = {
         "clean_json": clean_json,
         "viewpoints_db": viewpoints_db,
-        "agent_name": agent_name
+        "agent_name": agent_name,
+        "selected_frames": selected_frames
     }
     return hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 @cache_llm_call(ttl=3600)  # キャッシュLLM呼び出し結果（1時間）
 def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any], 
                      llm_client=None, prompt_template: str = None, few_shot_examples: list = None,
-                     agent_name: str = "match_viewpoints") -> Dict[str, Any]:
+                     agent_name: str = "match_viewpoints", selected_frames: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     コンポーネントをテスト観点にマッチングする
     
@@ -36,17 +37,24 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any],
         prompt_template: カスタムプロンプトテンプレート
         few_shot_examples: Few-shot学習例
         agent_name: エージェント名（設定から読み込むため）
+        selected_frames: 选定的Frame ID列表（可选）
         
     Returns:
         コンポーネントと観点のマッピング
     """
     # キャッシュキーを生成
-    cache_key = generate_cache_key(clean_json, viewpoints_db, agent_name)
+    cache_key = generate_cache_key(clean_json, viewpoints_db, agent_name, selected_frames)
     
     # キャッシュをチェック
     cached_result = cache_manager.get(cache_key)
     if cached_result is not None:
         return cached_result
+    
+    # 如果指定了选定的Frame，过滤组件
+    if selected_frames and "components" in clean_json:
+        filtered_json = filter_by_selected_frames(clean_json, selected_frames)
+    else:
+        filtered_json = clean_json
     
     # LLMクライアントを準備
     if llm_client is None:
@@ -60,7 +68,7 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any],
     
     # 入力データを準備
     current_input = json.dumps({
-        "components": clean_json,
+        "components": filtered_json,
         "viewpoints": viewpoints_db
     }, ensure_ascii=False)
     
@@ -85,3 +93,27 @@ def match_viewpoints(clean_json: Dict[str, Any], viewpoints_db: Dict[str, Any],
     cache_manager.set(cache_key, parsed_result, ttl=3600)
     
     return parsed_result
+
+def filter_by_selected_frames(figma_data: Dict[str, Any], selected_frames: List[str]) -> Dict[str, Any]:
+    """根据选定的Frame过滤组件"""
+    if not selected_frames or "components" not in figma_data:
+        return figma_data
+    
+    # 复制原始数据
+    filtered_data = figma_data.copy()
+    
+    # 如果数据中有frames字段，过滤frames
+    if "frames" in filtered_data:
+        filtered_data["frames"] = [
+            frame for frame in filtered_data["frames"] 
+            if frame.get("id") in selected_frames
+        ]
+    
+    # 如果有relationships字段，保持不变
+    # 这里我们不过滤relationships，因为可能会破坏组件间的关系
+    
+    # 如果有components字段，过滤components
+    # 注意：这里我们保留所有组件，因为测试观点匹配需要所有组件信息
+    # 实际上，我们在后续处理中会根据Frame过滤组件
+    
+    return filtered_data

@@ -24,6 +24,13 @@
 							"type": "file",
 							"required": false,
 							"description": "上传历史测试用例（可选，JSON/CSV）"
+						},
+						{
+							"name": "manual_frame_selection",
+							"type": "checkbox",
+							"required": false,
+							"default": false,
+							"description": "手动选择需要测试的Frame（勾选后将显示Frame列表供选择）"
 						}
 					]
 				},
@@ -40,7 +47,47 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"figma_yaml": "{{figma_yaml_file.content}}"
+						"figma_yaml": "{{figma_yaml_file.content}}",
+						"extract_frames_only": "{{manual_frame_selection}}"
+					}
+				},
+				"next": {
+					"condition": "{{manual_frame_selection}}",
+					"true": "select_frames",
+					"false": ["match_viewpoints", "route_infer"]
+				}
+			},
+
+			"select_frames": {
+				"type": "form",
+				"priority": "high",
+				"data": {
+					"title": "选择需要测试的Frame",
+					"description": "请从下面的列表中选择需要包含在测试中的Frame",
+					"fields": [
+						{
+							"name": "selected_frames",
+							"type": "checkboxes",
+							"options": "{{load_page.response.available_frames}}",
+							"required": true
+						}
+					]
+				},
+				"next": "process_selected_frames"
+			},
+
+			"process_selected_frames": {
+				"type": "http",
+				"priority": "high",
+				"data": {
+					"method": "POST",
+					"url": "http://host.docker.internal:8000/run_node/process_selected_frames/",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"figma_cache_id": "{{load_page.response.cache_id}}",
+						"selected_frames": "{{selected_frames}}"
 					}
 				},
 				"next": ["match_viewpoints", "route_infer"]
@@ -56,7 +103,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"clean_json_cache_id": "{{load_page.response.cache_id}}",
+						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
 						"viewpoints": "{{viewpoints_file.content}}"
 					}
 				},
@@ -97,7 +144,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"clean_json_cache_id": "{{load_page.response.cache_id}}"
+						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}"
 					}
 				},
 				"next": "wait_for_parallel"

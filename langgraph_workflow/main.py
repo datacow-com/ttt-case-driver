@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, Form, Request, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, Form, Request, HTTPException, Depends, Body
 from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import tempfile
@@ -26,7 +26,7 @@ from enhanced_workflow import run_enhanced_testcase_generation, build_enhanced_w
 import os
 import json
 import yaml
-from typing import Any
+from typing import Any, List
 import uuid
 import asyncio
 
@@ -380,6 +380,83 @@ async def run_node_fetch_and_clean_figma_json(
     INTERMEDIATE_RESULTS['fetch_and_clean_figma_json'] = cleaned
     return JSONResponse(cleaned)
 
+@app.post("/run_node/load_page/")
+async def run_node_load_page(
+    figma_yaml: str = Body(...),
+    extract_frames_only: bool = Body(False)
+):
+    """加载页面结构并提取Frame信息"""
+    try:
+        # 解析Figma数据
+        figma_data = json.loads(figma_yaml)
+        
+        # 提取所有Frame
+        from nodes.load_page import extract_frames, process_figma_data
+        frames = extract_frames(figma_data)
+        
+        # 如果只需要提取Frame（用于手动选择）
+        if extract_frames_only:
+            # 准备Frame选项列表（用于UI显示）
+            frame_options = [
+                {"value": frame["id"], "label": f"{frame['path']} ({frame['type']})"} 
+                for frame in frames
+            ]
+            
+            # 缓存原始Figma数据，以便后续处理
+            figma_cache_id = cache_node_data(figma_data, "figma_data")
+            
+            return JSONResponse({
+                "available_frames": frame_options,
+                "cache_id": figma_cache_id
+            })
+        
+        # 正常处理（不需要手动选择Frame）
+        processed_data = process_figma_data(figma_data)
+        
+        # 缓存结果
+        result_cache_id = cache_node_data(processed_data, "load_page_result")
+        
+        # 准备Frame选项列表（用于UI显示，虽然这里不会使用）
+        frame_options = [
+            {"value": frame["id"], "label": f"{frame['path']} ({frame['type']})"} 
+            for frame in frames
+        ]
+        
+        return JSONResponse({
+            "content": processed_data,
+            "cache_id": result_cache_id,
+            "available_frames": frame_options
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"处理Figma数据失败: {str(e)}")
+
+@app.post("/run_node/process_selected_frames/")
+async def run_node_process_selected_frames(
+    figma_cache_id: str = Form(...),
+    selected_frames: list = Body(...)
+):
+    """处理用户选择的Frame"""
+    try:
+        # 从缓存获取原始Figma数据
+        figma_data = redis_manager.get_cache(figma_cache_id)
+        if not figma_data:
+            raise HTTPException(status_code=404, detail="缓存的Figma数据未找到")
+        
+        # 处理选定的Frame
+        from nodes.load_page import process_figma_data
+        processed_data = process_figma_data(figma_data, selected_frames)
+        
+        # 缓存处理结果
+        result_cache_id = cache_node_data(processed_data, "selected_frames_result")
+        
+        return JSONResponse({
+            "content": processed_data,
+            "cache_id": result_cache_id,
+            "selected_frame_count": len(selected_frames)
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"处理选定Frame失败: {str(e)}")
+
 # 添加缓存节点数据的函数
 def cache_node_data(data: Any, prefix: str = "node_data") -> str:
     """缓存节点数据并返回缓存ID"""
@@ -397,6 +474,7 @@ async def run_node_match_viewpoints(
     clean_json_cache_id: str = Form(None),
     viewpoints_db: UploadFile = None,
     viewpoints_db_cache_id: str = Form(None),
+    selected_frames: List[str] = Form(None),
     agent_name: str = Form("match_viewpoints"),
     provider: str = Form(None),
     model: str = Form(None),
@@ -450,7 +528,8 @@ async def run_node_match_viewpoints(
         llm_client=llm_client,
         prompt_template=prompt_template,
         few_shot_examples=few_shot,
-        agent_name=agent_name
+        agent_name=agent_name,
+        selected_frames=selected_frames
     )
     
     # 缓存结果并生成缓存ID
