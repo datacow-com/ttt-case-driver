@@ -1,37 +1,163 @@
-llm_agents:
-  load_page:
-    provider: "claude-3"
-    api_key: "${CLAUDE_API_KEY}"
-    endpoint: "https://api.anthropic.com"
-    temperature: 0.2
-    language: "ja"
-  match_viewpoints:
-    provider: "gpt-4o"
+# LLMプロバイダー設定
+llm_providers:
+  # OpenAI設定
+  openai:
+    name: "OpenAI"
+    models:
+      gpt-4o:
+        name: "GPT-4 Omni"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.005
+        capabilities: ["text", "vision", "code"]
+      gpt-4-turbo:
+        name: "GPT-4 Turbo"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.01
+        capabilities: ["text", "code"]
+      gpt-3.5-turbo:
+        name: "GPT-3.5 Turbo"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.0015
+        capabilities: ["text", "code"]
     api_key: "${OPENAI_API_KEY}"
     endpoint: "https://api.openai.com/v1"
-    temperature: 0.1
-    language: "ja"
-  generate_testcases:
-    provider: "gpt-4o"
-    api_key: "${OPENAI_API_KEY}"
-    temperature: 0.3
-    language: "ja"
-  route_infer:
-    provider: "gemini-pro"
+    default_model: "gpt-4o"
+    
+  # Anthropic設定
+  anthropic:
+    name: "Anthropic"
+    models:
+      claude-3-opus:
+        name: "Claude 3 Opus"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.015
+        capabilities: ["text", "vision", "code"]
+      claude-3-sonnet:
+        name: "Claude 3 Sonnet"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.003
+        capabilities: ["text", "vision", "code"]
+      claude-3-haiku:
+        name: "Claude 3 Haiku"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.00025
+        capabilities: ["text", "vision", "code"]
+    api_key: "${CLAUDE_API_KEY}"
+    endpoint: "https://api.anthropic.com"
+    default_model: "claude-3-sonnet"
+    
+  # Google Gemini設定
+  google:
+    name: "Google Gemini"
+    models:
+      gemini-pro:
+        name: "Gemini Pro"
+        max_tokens: 8192
+        cost_per_1k_tokens: 0.0005
+        capabilities: ["text", "code"]
+      gemini-pro-vision:
+        name: "Gemini Pro Vision"
+        max_tokens: 8192
+        cost_per_1k_tokens: 0.0005
+        capabilities: ["text", "vision", "code"]
     api_key: "${GEMINI_API_KEY}"
-    endpoint: "https://..."
+    endpoint: "https://generativelanguage.googleapis.com"
+    default_model: "gemini-pro"
+    
+  # ローカルモデル設定
+  local:
+    name: "Local Models"
+    models:
+      llama-3.1-8b:
+        name: "Llama 3.1 8B"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.0
+        capabilities: ["text", "code"]
+        endpoint: "http://localhost:11434"
+      qwen2.5-7b:
+        name: "Qwen 2.5 7B"
+        max_tokens: 4096
+        cost_per_1k_tokens: 0.0
+        capabilities: ["text", "code"]
+        endpoint: "http://localhost:11435"
+    api_key: ""
+    default_model: "llama-3.1-8b"
+
+# ノードレベルのLLM設定
+llm_agents:
+  # 分析ノード - Claudeを使用した深い分析
+  analyze_viewpoints_modules:
+    provider: "anthropic"
+    model: "claude-3-sonnet"
+    temperature: 0.1
+    max_tokens: 2048
+    fallback_providers: ["openai", "google"]
+    
+  # マッチングノード - GPT-4を使用した正確なマッチング
+  match_viewpoints:
+    provider: "openai"
+    model: "gpt-4o"
+    temperature: 0.1
+    max_tokens: 1024
+    fallback_providers: ["anthropic", "google"]
+    
+  # 生成ノード - GPT-4を使用した創造的生成
+  generate_testcases:
+    provider: "openai"
+    model: "gpt-4o"
+    temperature: 0.3
+    max_tokens: 2048
+    fallback_providers: ["anthropic", "google"]
+    
+  # ルーティング推論 - Geminiを使用した論理推論
+  route_infer:
+    provider: "google"
+    model: "gemini-pro"
     temperature: 0.2
-    language: "ja"
+    max_tokens: 1024
+    fallback_providers: ["openai", "anthropic"]
+    
+  # クロスページケース - Claudeを使用した複雑な分析
   generate_cross_page_case:
-    provider: "gpt-4o"
-    api_key: "${OPENAI_API_KEY}"
+    provider: "anthropic"
+    model: "claude-3-sonnet"
     temperature: 0.2
-    language: "ja"
+    max_tokens: 2048
+    fallback_providers: ["openai", "google"]
+    
+  # 出力フォーマット - ローカルモデルを使用してコスト削減
   format_output:
-    provider: "gpt-4o"
-    api_key: "${OPENAI_API_KEY}"
-    temperature: 0.2
-    language: "ja"
+    provider: "local"
+    model: "llama-3.1-8b"
+    temperature: 0.1
+    max_tokens: 1024
+    fallback_providers: ["openai", "anthropic"]
+
+# グローバルLLM戦略
+llm_strategy:
+  # コスト最適化戦略
+  cost_optimization:
+    enabled: true
+    max_cost_per_request: 0.05  # ドル
+    preferred_providers: ["local", "google", "anthropic", "openai"]
+    
+  # パフォーマンス最適化戦略
+  performance_optimization:
+    enabled: true
+    max_response_time: 30  # 秒
+    timeout_fallback: true
+    
+  # 品質最適化戦略
+  quality_optimization:
+    enabled: true
+    min_quality_score: 0.8
+    retry_on_low_quality: true
+    
+  # 負荷分散戦略
+  load_balancing:
+    enabled: true
+    round_robin: true
+    health_check_interval: 60  # 秒
 
 output:
   format: "excel"
@@ -40,7 +166,7 @@ output:
   date_format: "YYYY/MM/DD"
   time_format: "HH:mm"
 
-# Redis配置 - 替代PostgreSQL
+# Redis設定 - PostgreSQLの代替
 redis:
   url: "${REDIS_URL:-redis://localhost:6379}"
   db: 0
@@ -48,25 +174,25 @@ redis:
   socket_timeout: 5
   socket_connect_timeout: 5
   
-  # TTL配置
+  # TTL設定
   ttl:
-    session: 86400          # 24小时
-    node_result: 86400      # 24小时
-    feedback: 86400         # 24小时
-    workflow_state: 7200    # 2小时
-    figma_data: 7200        # 2小时
-    viewpoints: 7200        # 2小时
-    llm_call: 3600          # 1小时
-    cache: 3600             # 1小时
+    session: 86400          # 24時間
+    node_result: 86400      # 24時間
+    feedback: 86400         # 24時間
+    workflow_state: 7200    # 2時間
+    figma_data: 7200        # 2時間
+    viewpoints: 7200        # 2時間
+    llm_call: 3600          # 1時間
+    cache: 3600             # 1時間
   
-  # 缓存策略
+  # キャッシュ戦略
   strategy:
-    preload_frames: true     # 预加载所有Frame
-    cache_by_component: true # 按组件类型缓存
-    cache_analysis: true     # 缓存分析结果
-    cache_mappings: true     # 缓存映射关系
+    preload_frames: true     # すべてのフレームをプリロード
+    cache_by_component: true # コンポーネントタイプ別にキャッシュ
+    cache_analysis: true     # 分析結果をキャッシュ
+    cache_mappings: true     # マッピング関係をキャッシュ
 
-# 存储配置（保留MinIO用于文件存储）
+# ストレージ設定（MinIOをファイルストレージ用に保持）
 storage:
   minio_url: "${MINIO_URL}"
   minio_access_key: "${MINIO_ACCESS_KEY}"

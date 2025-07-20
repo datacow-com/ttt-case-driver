@@ -1,45 +1,49 @@
 from typing import Dict, Any, List
 from utils.prompt_loader import PromptManager
 from utils.cache_manager import cache_llm_call, cache_manager
+from utils.llm_client_factory import SmartLLMClient
 import hashlib
 import json
 
 def build_prompt(system_prompt: str, few_shot_examples: list, current_input: str) -> str:
+    """プロンプトを構築する"""
     prompt = system_prompt + '\n'
     for ex in few_shot_examples:
-        prompt += f"示例输入:\n{ex['input']}\n示例输出:\n{ex['output']}\n"
-    prompt += f"当前输入:\n{current_input}\n请生成输出："
+        prompt += f"Example Input:\n{ex['input']}\nExample Output:\n{ex['output']}\n"
+    prompt += f"Current Input:\n{current_input}\nOutput:"
     return prompt
 
 def build_batch_prompt(components: List[Dict], system_prompt: str, few_shot_examples: list) -> str:
-    """构建批量处理prompt"""
+    """バッチ処理プロンプトを構築する"""
     prompt = system_prompt + '\n'
     
-    # 添加few-shot示例
+    # Few-shotの例を追加
     for ex in few_shot_examples:
-        prompt += f"示例输入:\n{ex['input']}\n示例输出:\n{ex['output']}\n"
+        prompt += f"Example Input:\n{ex['input']}\nExample Output:\n{ex['output']}\n"
     
-    # 添加批量输入
-    prompt += "当前输入（批量处理）:\n"
+    # バッチ入力を追加
+    prompt += "Current Input (Batch Processing):\n"
     for i, item in enumerate(components):
         comp = item['component']
         viewpoints = item['viewpoints']
         for j, viewpoint in enumerate(viewpoints):
-            prompt += f"组件{i+1}-观点{j+1}: 组件类型={comp['type']}, 名称={comp.get('name', comp.get('id', ''))}, 测试观点={viewpoint}\n"
+            prompt += f"Component{i+1}-Viewpoint{j+1}: Type={comp['type']}, Name={comp.get('name', comp.get('id', ''))}, TestViewpoint={viewpoint}\n"
     
-    prompt += "\n请为每个组件-观点组合生成测试用例，以JSON数组格式输出："
+    prompt += "\nPlease generate test cases for each component-viewpoint combination, output as JSON array:"
     return prompt
 
 def parse_batch_result(batch_result: str, components: List[Dict]) -> List[Dict[str, Any]]:
-    """解析批量结果"""
+    """バッチ結果を解析する"""
     try:
-        # 尝试解析JSON结果
+        # JSON結果の解析を試みる
         if isinstance(batch_result, str):
             parsed_results = json.loads(batch_result)
+        elif isinstance(batch_result, dict) and "content" in batch_result:
+            parsed_results = json.loads(batch_result["content"])
         else:
             parsed_results = batch_result
         
-        # 将结果映射回组件
+        # 結果をコンポーネントにマッピング
         testcases = []
         result_index = 0
         
@@ -58,21 +62,26 @@ def parse_batch_result(batch_result: str, components: List[Dict]) -> List[Dict[s
                     })
                     result_index += 1
                 else:
-                    # 如果结果不足，创建默认测试用例
+                    # 結果が不足している場合、デフォルトのテストケースを作成
                     testcases.append({
                         'component_id': comp.get('id', ''),
                         'component': comp,
                         'viewpoint': viewpoint,
-                        'testcase': f"默认测试用例: {viewpoint}"
+                        'testcase': f"Default test case: {viewpoint}"
                     })
         
         return testcases
     except Exception as e:
-        # 解析失败，回退到逐个处理
-        return individual_process_components(components, None, None, None)
+        # 解析に失敗した場合、個別処理にフォールバック
+        return individual_process_components(components, None, None, None, "generate_testcases")
 
-def individual_process_components(components: List[Dict], llm_client, prompt_template: str, few_shot_examples: list) -> List[Dict[str, Any]]:
-    """逐个处理组件（原有逻辑）"""
+def individual_process_components(components: List[Dict], llm_client=None, prompt_template: str = None, 
+                                 few_shot_examples: list = None, agent_name: str = "generate_testcases") -> List[Dict[str, Any]]:
+    """コンポーネントを個別に処理する（既存のロジック）"""
+    # LLMクライアントを準備
+    if llm_client is None:
+        llm_client = SmartLLMClient(agent_name)
+        
     prompt_manager = PromptManager()
     node_prompt = prompt_manager.get_prompt('generate_testcases')
     system_prompt = prompt_template or node_prompt.get('system_prompt', '')
@@ -82,65 +91,88 @@ def individual_process_components(components: List[Dict], llm_client, prompt_tem
     for item in components:
         comp = item['component']
         for viewpoint in item['viewpoints']:
-            current_input = f"组件: {comp['type']}\n名称: {comp.get('name', comp.get('id', ''))}\n测试观点: {viewpoint}"
+            current_input = f"Component: {comp['type']}\nName: {comp.get('name', comp.get('id', ''))}\nTest Viewpoint: {viewpoint}"
             prompt = build_prompt(system_prompt, few_shot, current_input)
-            result = llm_client.generate(prompt)
+            result = llm_client.generate_sync(prompt)
+            
+            content = result.get("content", "") if isinstance(result, dict) else result
+            
             testcases.append({
                 'component_id': comp.get('id', ''),
                 'component': comp,
                 'viewpoint': viewpoint,
-                'testcase': result
+                'testcase': content
             })
     return testcases
 
-def generate_cache_key(component_viewpoints: Dict, prompt_template: str, few_shot_examples: list) -> str:
-    """生成缓存键"""
+def generate_cache_key(component_viewpoints: Dict, agent_name: str) -> str:
+    """キャッシュキーを生成する"""
     content = {
         "component_viewpoints": component_viewpoints,
-        "prompt_template": prompt_template,
-        "few_shot_examples": few_shot_examples
+        "agent_name": agent_name
     }
     return hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
-@cache_llm_call(ttl=3600)  # 缓存LLM调用结果1小时
-def generate_testcases(component_viewpoints: Dict[str, Any], llm_client, prompt_template: str = None, few_shot_examples: list = None) -> List[Dict[str, Any]]:
+@cache_llm_call(ttl=3600)  # キャッシュLLM呼び出し結果（1時間）
+def generate_testcases(component_viewpoints: Dict[str, Any], llm_client=None, 
+                      prompt_template: str = None, few_shot_examples: list = None,
+                      agent_name: str = "generate_testcases") -> List[Dict[str, Any]]:
     """
-    优化的测试用例生成，支持批量处理和缓存
-    """
-    # 生成缓存键
-    cache_key = generate_cache_key(component_viewpoints, prompt_template, few_shot_examples)
+    最適化されたテストケース生成、バッチ処理とキャッシュをサポート
     
-    # 检查缓存
+    Args:
+        component_viewpoints: コンポーネントと観点のマッピング
+        llm_client: LLMクライアント（指定されていない場合は作成）
+        prompt_template: カスタムプロンプトテンプレート
+        few_shot_examples: Few-shot学習例
+        agent_name: エージェント名（設定から読み込むため）
+        
+    Returns:
+        生成されたテストケースのリスト
+    """
+    # キャッシュキーを生成
+    cache_key = generate_cache_key(component_viewpoints, agent_name)
+    
+    # キャッシュをチェック
     cached_result = cache_manager.get(cache_key)
     if cached_result is not None:
         return cached_result
     
+    # LLMクライアントを準備
+    if llm_client is None:
+        llm_client = SmartLLMClient(agent_name)
+    
     components = component_viewpoints.get('component_viewpoints', [])
     
-    # 根据数据量选择处理策略
+    # データ量に基づいて処理戦略を選択
     if len(components) > 5:
-        # 大数据量：批量处理
-        result = batch_process_components(components, llm_client, prompt_template, few_shot_examples)
+        # 大量データ：バッチ処理
+        result = batch_process_components(components, llm_client, prompt_template, few_shot_examples, agent_name)
     else:
-        # 小数据量：逐个处理
-        result = individual_process_components(components, llm_client, prompt_template, few_shot_examples)
+        # 少量データ：個別処理
+        result = individual_process_components(components, llm_client, prompt_template, few_shot_examples, agent_name)
     
-    # 缓存结果
+    # 結果をキャッシュ
     cache_manager.set(cache_key, result, ttl=3600)
     return result
 
-def batch_process_components(components: List[Dict], llm_client, prompt_template: str, few_shot_examples: list) -> List[Dict[str, Any]]:
-    """批量处理组件，减少API调用次数"""
+def batch_process_components(components: List[Dict], llm_client=None, prompt_template: str = None, 
+                            few_shot_examples: list = None, agent_name: str = "generate_testcases") -> List[Dict[str, Any]]:
+    """コンポーネントをバッチ処理し、API呼び出し回数を減らす"""
+    # LLMクライアントを準備
+    if llm_client is None:
+        llm_client = SmartLLMClient(agent_name)
+        
     prompt_manager = PromptManager()
     node_prompt = prompt_manager.get_prompt('generate_testcases')
     system_prompt = prompt_template or node_prompt.get('system_prompt', '')
     few_shot = few_shot_examples or node_prompt.get('few_shot_examples', [])
     
-    # 构建批量prompt
+    # バッチプロンプトを構築
     batch_prompt = build_batch_prompt(components, system_prompt, few_shot)
     
-    # 单次LLM调用生成所有测试用例
-    batch_result = llm_client.generate(batch_prompt)
+    # 単一のLLM呼び出しですべてのテストケースを生成
+    batch_result = llm_client.generate_sync(batch_prompt)
     
-    # 解析批量结果
+    # バッチ結果を解析
     return parse_batch_result(batch_result, components)
