@@ -132,6 +132,38 @@ llm_agents:
     temperature: 0.1
     max_tokens: 1024
     fallback_providers: ["openai", "anthropic"]
+    
+  # 历史测试用例处理 - 使用Claude进行复杂数据处理
+  process_historical_cases:
+    provider: "anthropic"
+    model: "claude-3-sonnet"
+    temperature: 0.1
+    max_tokens: 2048
+    fallback_providers: ["openai", "google"]
+    
+  # 测试模式提取 - 使用GPT-4进行模式识别
+  extract_test_patterns:
+    provider: "openai"
+    model: "gpt-4o"
+    temperature: 0.2
+    max_tokens: 2048
+    fallback_providers: ["anthropic", "google"]
+    
+  # 差异分析 - 使用Claude进行细致比较
+  analyze_differences:
+    provider: "anthropic"
+    model: "claude-3-sonnet"
+    temperature: 0.1
+    max_tokens: 2048
+    fallback_providers: ["openai", "google"]
+    
+  # 覆盖率评估 - 使用GPT-4进行全面评估
+  evaluate_coverage:
+    provider: "openai"
+    model: "gpt-4o"
+    temperature: 0.2
+    max_tokens: 2048
+    fallback_providers: ["anthropic", "google"]
 
 # グローバルLLM戦略
 llm_strategy:
