@@ -1,4 +1,4 @@
-from utils.redis_manager import redis_manager
+from .redis_manager import redis_manager
 from functools import wraps
 import hashlib
 import json

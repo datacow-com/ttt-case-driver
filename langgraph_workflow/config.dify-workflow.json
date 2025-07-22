@@ -8,16 +8,22 @@
 					"title": "测试用例生成输入",
 					"fields": [
 						{
-							"name": "figma_yaml_file",
-							"type": "file",
+							"name": "figma_access_token",
+							"type": "text",
 							"required": true,
-							"description": "上传从 Figma API 或导出的 YAML 页面结构"
+							"description": "Figma API访问令牌（Access Token）"
+						},
+						{
+							"name": "figma_file_key",
+							"type": "text",
+							"required": true,
+							"description": "Figma文件ID（File Key）"
 						},
 						{
 							"name": "viewpoints_file",
 							"type": "file",
 							"required": true,
-							"description": "上传测试观点（viewpoints.yaml / JSON）"
+							"description": "上传测试观点（支持JSON/CSV/Excel格式）"
 						},
 						{
 							"name": "history_cases_files",
@@ -48,20 +54,25 @@
 						}
 					]
 				},
-				"next": ["load_page", "process_viewpoints", "process_historical_cases"]
+				"next": [
+					"fetch_figma_data",
+					"process_viewpoints",
+					"process_historical_cases"
+				]
 			},
 
-			"load_page": {
+			"fetch_figma_data": {
 				"type": "http",
 				"priority": "high",
 				"data": {
 					"method": "POST",
-					"url": "http://host.docker.internal:8000/run_node/load_page/",
+					"url": "http://host.docker.internal:8000/run_node/fetch_figma_data/",
 					"headers": {
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"figma_yaml": "{{figma_yaml_file.content}}",
+						"figma_access_token": "{{figma_access_token}}",
+						"figma_file_key": "{{figma_file_key}}",
 						"extract_frames_only": "{{manual_frame_selection}}"
 					}
 				},
@@ -101,9 +112,9 @@
 						{
 							"name": "selected_frames",
 							"type": "checkboxes",
-							"options": "{{load_page.response.available_frames}}",
+							"options": "{{fetch_figma_data.response.available_frames}}",
 							"required": true,
-							"description": "已找到 {{load_page.response.frames_count}} 个Frame，分布在 {{load_page.response.pages.length}} 个页面中"
+							"description": "已找到 {{fetch_figma_data.response.frames_count}} 个Frame，分布在 {{fetch_figma_data.response.pages.length}} 个页面中"
 						},
 						{
 							"name": "selection_info",
@@ -125,7 +136,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"figma_cache_id": "{{load_page.response.cache_id}}",
+						"figma_cache_id": "{{fetch_figma_data.response.cache_id}}",
 						"selected_frames": "{{selected_frames}}"
 					}
 				},
@@ -138,7 +149,7 @@
 				"data": {
 					"conditions": [
 						{
-							"condition": "({{process_viewpoints.response}} != null) && (({{process_selected_frames.response}} != null) || ({{load_page.response}} != null && !{{manual_frame_selection}}))",
+							"condition": "({{process_viewpoints.response}} != null) && (({{process_selected_frames.response}} != null) || ({{fetch_figma_data.response}} != null && !{{manual_frame_selection}}))",
 							"next": ["match_viewpoints", "route_infer"]
 						}
 					],
@@ -185,7 +196,7 @@
 				"data": {
 					"conditions": [
 						{
-							"condition": "({{process_viewpoints.response}} != null) && (({{process_selected_frames.response}} != null) || ({{load_page.response}} != null && !{{manual_frame_selection}})) && ({{extract_test_patterns.response}} != null)",
+							"condition": "({{process_viewpoints.response}} != null) && (({{process_selected_frames.response}} != null) || ({{fetch_figma_data.response}} != null && !{{manual_frame_selection}})) && ({{extract_test_patterns.response}} != null)",
 							"next": ["match_viewpoints", "route_infer", "analyze_differences"]
 						}
 					],
@@ -203,7 +214,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"figma_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
+						"figma_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{fetch_figma_data.response.cache_id}}{{/if}}",
 						"patterns_cache_id": "{{extract_test_patterns.response.cache_id}}"
 					}
 				},
@@ -266,7 +277,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
+						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{fetch_figma_data.response.cache_id}}{{/if}}",
 						"viewpoints_processed": "{{process_viewpoints.response.viewpoints}}",
 						"selected_frames": "{{#if selected_frames}}{{selected_frames}}{{else}}null{{/if}}"
 					}
@@ -284,7 +295,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"figma_data_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}",
+						"figma_data_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{fetch_figma_data.response.cache_id}}{{/if}}",
 						"viewpoints_cache_id": "{{process_viewpoints.response.cache_id}}",
 						"historical_patterns_cache_id": "{{#if extract_test_patterns.response}}{{extract_test_patterns.response.cache_id}}{{else}}null{{/if}}",
 						"agent_config": {
@@ -332,7 +343,7 @@
 						"Content-Type": "application/json"
 					},
 					"body": {
-						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{load_page.response.cache_id}}{{/if}}"
+						"clean_json_cache_id": "{{#if process_selected_frames.response.cache_id}}{{process_selected_frames.response.cache_id}}{{else}}{{fetch_figma_data.response.cache_id}}{{/if}}"
 					}
 				},
 				"next": "wait_for_parallel"

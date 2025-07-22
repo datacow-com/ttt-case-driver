@@ -12,6 +12,7 @@ from nodes.route_infer import route_infer
 from nodes.generate_cross_page_case import generate_cross_page_case
 from nodes.format_output import format_output
 from nodes.fetch_and_clean_figma_json import fetch_and_clean_figma_json, get_compression_stats, get_cache_stats
+from nodes.fetch_figma_data import fetch_figma_data
 from nodes.create_semantic_correlation_map import create_semantic_correlation_map
 from utils.enhanced_config_loader import config_loader
 from utils.llm_client_factory import SmartLLMClient, LLMClientFactory
@@ -493,6 +494,20 @@ async def run_node_fetch_and_clean_figma_json(
     cleaned = fetch_and_clean_figma_json(access_token, file_key, enable_compression)
     INTERMEDIATE_RESULTS['fetch_and_clean_figma_json'] = cleaned
     return JSONResponse(cleaned)
+
+@app.post("/run_node/fetch_figma_data/")
+async def run_node_fetch_figma_data(
+    figma_access_token: str = Body(...),
+    figma_file_key: str = Body(...),
+    extract_frames_only: bool = Body(False)
+):
+    """从Figma API获取数据并处理"""
+    try:
+        result = fetch_figma_data(figma_access_token, figma_file_key, extract_frames_only)
+        INTERMEDIATE_RESULTS['fetch_figma_data'] = result
+        return JSONResponse(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取Figma数据失败: {str(e)}")
 
 @app.post("/run_node/load_page/")
 async def run_node_load_page(
@@ -1192,7 +1207,7 @@ async def classify_viewpoints(
 async def get_supported_viewpoint_formats():
     """サポートされているテスト観点フォーマットを取得"""
     return {
-        "formats": ["json", "csv", "xlsx", "yaml"],
+        "formats": ["json", "csv", "xlsx", "xls"],
         "examples": {
             "json": {"button": ["クリック時の動作確認", "無効状態の確認"]},
             "csv": "component_type,viewpoint\nbutton,クリック時の動作確認\nbutton,無効状態の確認"
