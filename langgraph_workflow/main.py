@@ -1,11 +1,23 @@
-from fastapi import FastAPI, UploadFile, Form, Request, HTTPException, Depends, Body
-from fastapi.responses import PlainTextResponse, JSONResponse, Response
-from fastapi.middleware.cors import CORSMiddleware
-import tempfile
-import shutil
+from typing import Dict, Any, List, Optional, Tuple, Union
+import os
+import json
+import time
+import uuid
+import asyncio
 from datetime import datetime
-from workflow import run_workflow
-from nodes.load_page import load_page
+from fastapi import FastAPI, UploadFile, File, Form, Body, HTTPException, Query, BackgroundTasks, Request
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+import logging
+from utils.redis_manager import redis_manager
+from utils.cache_manager import cache_manager
+from utils.viewpoints_parser import ViewpointsParser
+from utils.viewpoints_standardizer import viewpoints_standardizer
+from utils.config_loader import config_loader
+from utils.enhanced_config_loader import enhanced_config_loader
+from utils.performance_monitor import performance_monitor
+from utils.intelligent_cache_manager import intelligent_cache_manager
+from utils.localization import localization
 from nodes.match_viewpoints import match_viewpoints
 from nodes.generate_testcases import generate_testcases
 from nodes.route_infer import route_infer
@@ -14,26 +26,14 @@ from nodes.format_output import format_output
 from nodes.fetch_and_clean_figma_json import fetch_and_clean_figma_json, get_compression_stats, get_cache_stats
 from nodes.fetch_figma_data import fetch_figma_data
 from nodes.create_semantic_correlation_map import create_semantic_correlation_map
-from utils.enhanced_config_loader import config_loader
-from utils.llm_client_factory import SmartLLMClient, LLMClientFactory
-from utils.config_validator import ConfigValidator
-from utils.param_utils import save_temp_upload, parse_yaml_file
-from utils.viewpoints_parser import ViewpointsParser
-from utils.redis_manager import redis_manager
-from utils.state_management import StateManager
-from utils.intelligent_cache_manager import intelligent_cache_manager
-from utils.figma_compressor import figma_compressor
-from utils.viewpoints_standardizer import viewpoints_standardizer
-from enhanced_workflow import run_enhanced_testcase_generation, build_enhanced_workflow_with_wrappers
-import os
-import json
-import yaml
-from typing import Any, List, Dict
-import uuid
-import asyncio
 from nodes.evaluate_testcase_quality import evaluate_testcase_quality
 from nodes.optimize_testcases import optimize_testcases
 from utils.retry_controller import RetryController
+import logging
+import tempfile
+import shutil
+import yaml
+from utils.param_utils import parse_yaml_file
 
 # 任务优先级常量
 PRIORITY_HIGH = "high"
@@ -509,138 +509,7 @@ async def run_node_fetch_figma_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取Figma数据失败: {str(e)}")
 
-@app.post("/run_node/load_page/")
-async def run_node_load_page(
-    figma_yaml: str = Body(...),
-    extract_frames_only: bool = Body(False)
-):
-    """加载页面结构并提取Frame信息"""
-    try:
-        # 解析Figma数据
-        figma_data = json.loads(figma_yaml)
-        
-        # 提取所有页面和Frame
-        from nodes.load_page import extract_pages_and_frames, extract_frames_from_node
-        pages, frames = extract_pages_and_frames(figma_data)
-        
-        # 如果只需要提取Frame（用于手动选择）
-        if extract_frames_only:
-            # 按页面组织Frame选项
-            page_frame_options = {}
-            for page in pages:
-                page_id = page["id"]
-                page_name = page["name"]
-                page_frame_options[page_id] = {
-                    "page_name": page_name,
-                    "frames": []
-                }
-            
-            # 将Frame按页面分组
-            for frame in frames:
-                page_id = frame.get("page_id")
-                if page_id in page_frame_options:
-                    # 添加Frame信息，包括组件统计
-                    frame_option = {
-                        "value": frame["id"],
-                        "label": f"{frame['path']} ({frame['type']})",
-                        "children_count": frame.get("children_count", 0),
-                        "has_interactive": frame.get("has_interactive", False)
-                    }
-                    page_frame_options[page_id]["frames"].append(frame_option)
-            
-            # 转换为UI友好的格式
-            ui_frame_options = []
-            for page_id, page_data in page_frame_options.items():
-                if page_data["frames"]:  # 只添加有Frame的页面
-                    page_group = {
-                        "group": page_data["page_name"],
-                        "options": page_data["frames"]
-                    }
-                    ui_frame_options.append(page_group)
-            
-            # 缓存原始Figma数据，以便后续处理
-            figma_cache_id = cache_node_data(figma_data, "figma_data")
-            
-            return JSONResponse({
-                "available_frames": ui_frame_options,
-                "cache_id": figma_cache_id,
-                "pages": pages,
-                "frames_count": len(frames)
-            })
-        
-        # 正常处理（不需要手动选择Frame）
-        from nodes.load_page import process_figma_data
-        processed_data = process_figma_data(figma_data)
-        
-        # 缓存结果
-        result_cache_id = cache_node_data(processed_data, "load_page_result")
-        
-        # 准备Frame选项列表（用于UI显示，虽然这里不会使用）
-        frame_options = [
-            {"value": frame["id"], "label": f"{frame['path']} ({frame['type']})"} 
-            for frame in frames
-        ]
-        
-        return JSONResponse({
-            "content": processed_data,
-            "cache_id": result_cache_id,
-            "available_frames": frame_options,
-            "pages": pages,
-            "frames_count": len(frames)
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"处理Figma数据失败: {str(e)}")
 
-@app.post("/run_node/process_selected_frames/")
-async def run_node_process_selected_frames(
-    figma_cache_id: str = Form(...),
-    selected_frames: list = Body(...)
-):
-    """处理用户选择的Frame"""
-    try:
-        # 从缓存获取原始Figma数据
-        figma_data = redis_manager.get_cache(figma_cache_id)
-        if not figma_data:
-            raise HTTPException(status_code=404, detail="缓存的Figma数据未找到")
-        
-        # 处理选定的Frame
-        from nodes.load_page import process_figma_data
-        processed_data = process_figma_data(figma_data, selected_frames)
-        
-        # 缓存处理结果
-        result_cache_id = cache_node_data(processed_data, "selected_frames_result")
-        
-        # 获取选定Frame所属的页面
-        selected_pages = set()
-        for frame in processed_data.get("frames", []):
-            if "page_id" in frame and frame["page_id"]:
-                selected_pages.add(frame["page_id"])
-        
-        # 统计选定Frame中的组件数量
-        component_count = len(processed_data.get("components", []))
-        component_types = len(processed_data.get("component_categories", {}))
-        
-        return JSONResponse({
-            "content": processed_data,
-            "cache_id": result_cache_id,
-            "selected_frame_count": len(selected_frames),
-            "selected_page_count": len(selected_pages),
-            "component_count": component_count,
-            "component_type_count": component_types
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"处理选定Frame失败: {str(e)}")
-
-# 添加缓存节点数据的函数
-def cache_node_data(data: Any, prefix: str = "node_data") -> str:
-    """缓存节点数据并返回缓存ID"""
-    # 生成唯一缓存ID
-    cache_id = f"{prefix}_{uuid.uuid4().hex}"
-    
-    # 将数据缓存到Redis
-    redis_manager.set_cache(cache_id, data, ttl=3600)  # 1小时过期
-    
-    return cache_id
 
 @app.post("/run_node/match_viewpoints/")
 async def run_node_match_viewpoints(
@@ -1030,81 +899,6 @@ async def get_intermediate_result(node_name: str):
         raise HTTPException(status_code=404, detail=f"ノード {node_name} の中間結果が見つかりません")
     return JSONResponse(INTERMEDIATE_RESULTS[node_name])
 
-@app.post("/parse_viewpoints/")
-async def parse_viewpoints(
-    viewpoints_file: UploadFile,
-    file_extension: str = Form(None),
-    enable_standardization: bool = Form(True),
-    enable_priority_evaluation: bool = Form(True),
-    enable_classification: bool = Form(True)
-):
-    """テスト観点を解析"""
-    # 一時ファイルを保存
-    temp_path = save_temp_upload(viewpoints_file)
-    
-    # ファイル拡張子を決定
-    if not file_extension:
-        file_extension = os.path.splitext(viewpoints_file.filename)[1].lower()
-    
-    # ViewpointsParserを使用して解析
-    parser = ViewpointsParser()
-    try:
-        viewpoints = parser.parse_file(temp_path, file_extension)
-        
-        # 標準化が有効な場合
-        if enable_standardization:
-            viewpoints = viewpoints_standardizer.standardize_viewpoints(viewpoints)
-            
-            # 返回结果中添加分析信息
-            result = {
-                "viewpoints": viewpoints,
-                "metadata": {
-                    "total_viewpoints": sum(len(vps) for vps in viewpoints.values()),
-                    "component_types": list(viewpoints.keys()),
-                    "standardized": enable_standardization,
-                    "priority_evaluated": enable_priority_evaluation,
-                    "classified": enable_classification,
-                    "processed_at": datetime.now().isoformat()
-                }
-            }
-            
-            # 统计优先级分布
-            if enable_priority_evaluation:
-                priority_stats = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
-                for component_vps in viewpoints.values():
-                    for vp in component_vps:
-                        if isinstance(vp, dict) and "priority" in vp:
-                            priority = vp.get("priority", "MEDIUM")
-                            priority_stats[priority] = priority_stats.get(priority, 0) + 1
-                result["metadata"]["priority_stats"] = priority_stats
-            
-            # 统计分类分布
-            if enable_classification:
-                classification_stats = {
-                    "functional_type": {},
-                    "test_type": {},
-                    "ux_dimension": {},
-                    "technical_aspect": {}
-                }
-                
-                for component_vps in viewpoints.values():
-                    for vp in component_vps:
-                        if isinstance(vp, dict) and "classifications" in vp:
-                            for dim, classes in vp.get("classifications", {}).items():
-                                for cls in classes:
-                                    classification_stats[dim][cls] = classification_stats[dim].get(cls, 0) + 1
-                
-                result["metadata"]["classification_stats"] = classification_stats
-            
-            return JSONResponse(result)
-        else:
-            return JSONResponse(viewpoints)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"テスト観点の解析に失敗しました: {str(e)}")
-    finally:
-        # 一時ファイルを削除
-        os.remove(temp_path)
-
 @app.post("/viewpoints/analyze_priority")
 async def analyze_viewpoints_priority(
     viewpoints_data: Dict[str, Any],
@@ -1210,8 +1004,10 @@ async def get_supported_viewpoint_formats():
         "formats": ["json", "csv", "xlsx", "xls"],
         "examples": {
             "json": {"button": ["クリック時の動作確認", "無効状態の確認"]},
-            "csv": "component_type,viewpoint\nbutton,クリック時の動作確認\nbutton,無効状態の確認"
-        }
+            "csv": "component_type,viewpoint\nbutton,クリック時の動作確認\nbutton,無効状態の確認",
+            "xlsx": "Excel格式（表格形式）"
+        },
+        "note": "YAML格式不再支持，请使用JSON格式代替"
     }
 
 @app.get("/system/language")
@@ -1228,39 +1024,50 @@ async def set_system_language(language: str = Form(...)):
 
 @app.post("/run_enhanced_workflow/")
 async def run_enhanced_workflow(
-    figma_file: UploadFile,
-    viewpoints_file: UploadFile,
+    figma_access_token: str = Form(...),
+    figma_file_key: str = Form(...),
+    viewpoints_data: Dict[str, Any] = Body(...),
     agent_name: str = Form("match_viewpoints"),
     provider: str = Form(None),
     model: str = Form(None),
     temperature: float = Form(None),
     max_tokens: int = Form(None)
 ):
-    """拡張ワークフローを実行"""
-    # ファイルを読み込む
-    figma_data = json.load(figma_file.file)
-    viewpoints_data = json.load(viewpoints_file.file)
-    
-    # カスタム設定が提供されている場合、SmartLLMClientを作成
-    llm_client = None
-    if any([provider, model, temperature, max_tokens]):
-        # カスタムクライアントを作成
-        if provider and model:
-            llm_client = LLMClientFactory.create_client(provider, model)
-        else:
-            # エージェント名を使用
-            llm_client = SmartLLMClient(agent_name)
-    
-    # ワークフローを実行
-    workflow_id, initial_state = run_enhanced_testcase_generation(
-        figma_data, viewpoints_data, llm_client
-    )
-    
-    return {
-        "workflow_id": workflow_id,
-        "initial_state": initial_state,
-        "status": "running"
-    }
+    """拡張ワークフローを実行 - 使用API方式获取Figma数据"""
+    try:
+        # 获取Figma数据
+        figma_result = fetch_figma_data(
+            figma_access_token=figma_access_token,
+            figma_file_key=figma_file_key
+        )
+        figma_data = figma_result["figma_data"]
+        
+        # 使用预处理的测试观点数据
+        viewpoints_processed = viewpoints_data
+        
+        # カスタム設定が提供されている場合、SmartLLMClientを作成
+        llm_client = None
+        if any([provider, model, temperature, max_tokens]):
+            # カスタムクライアントを作成
+            if provider and model:
+                llm_client = LLMClientFactory.create_client(provider, model)
+            else:
+                # エージェント名を使用
+                llm_client = SmartLLMClient(agent_name)
+        
+        # ワークフローを実行
+        workflow_id, initial_state = run_enhanced_testcase_generation(
+            figma_data, viewpoints_processed, llm_client
+        )
+        
+        return {
+            "workflow_id": workflow_id,
+            "initial_state": initial_state,
+            "status": "running"
+        }
+    except Exception as e:
+        logging.error(f"运行增强工作流失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"运行增强工作流失败: {str(e)}")
 
 @app.get("/workflow_status/{workflow_id}")
 async def get_workflow_status(workflow_id: str):
@@ -1354,101 +1161,6 @@ async def run_enhanced_workflow_step(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ステップ実行エラー: {str(e)}")
 
-@app.post("/parse_historical_cases/")
-async def parse_historical_cases(
-    historical_cases_files: List[UploadFile] = None,
-    file_extensions: str = Form(None),  # 逗号分隔的扩展名列表
-    enable_standardization: bool = Form(True)
-):
-    """解析历史测试用例文件 - 支持多文件"""
-    try:
-        # 处理文件扩展名列表
-        ext_list = None
-        if file_extensions:
-            ext_list = [ext.strip() for ext in file_extensions.split(',')]
-        
-        # 如果没有提供文件，返回空结果
-        if not historical_cases_files:
-            return {
-                "status": "success",
-                "message": "未提供历史测试用例文件",
-                "cases": {},
-                "cache_id": "",
-                "stats": {
-                    "total_cases": 0,
-                    "file_count": 0,
-                    "component_types": {},
-                    "action_types": {},
-                    "category_types": {}
-                }
-            }
-        
-        # 如果只有一个文件，使用单文件处理
-        if len(historical_cases_files) == 1:
-            file = historical_cases_files[0]
-            file_content = await file.read()
-            filename = file.filename
-            
-            # 如果未提供文件扩展名，则从文件名中提取
-            file_extension = None
-            if ext_list and len(ext_list) > 0:
-                file_extension = ext_list[0]
-            elif filename and '.' in filename:
-                file_extension = filename.split('.')[-1].lower()
-            
-            from nodes.process_historical_cases import process_historical_cases
-            
-            # 解析历史测试用例
-            result = process_historical_cases(
-                file_content=file_content, 
-                file_extension=file_extension, 
-                filename=filename,
-                enable_standardization=enable_standardization
-            )
-        else:
-            # 多文件处理
-            file_contents = []
-            filenames = []
-            
-            # 读取所有文件内容
-            for file in historical_cases_files:
-                file_contents.append(await file.read())
-                filenames.append(file.filename)
-            
-            # 如果未提供文件扩展名列表，则从文件名中提取
-            if not ext_list:
-                ext_list = []
-                for name in filenames:
-                    if name and '.' in name:
-                        ext_list.append(name.split('.')[-1].lower())
-                    else:
-                        ext_list.append(None)
-            
-            # 确保扩展名列表长度匹配
-            while len(ext_list) < len(file_contents):
-                ext_list.append(None)
-            
-            from nodes.process_historical_cases import process_historical_cases
-            
-            # 解析历史测试用例
-            result = process_historical_cases(
-                multiple_files=file_contents,
-                file_extensions=ext_list,
-                filenames=filenames,
-                enable_standardization=enable_standardization
-            )
-        
-        return {
-            "status": "success",
-            "message": f"成功解析历史测试用例，共 {len(result['cases'])} 条，来自 {result['stats']['file_count']} 个文件",
-            "cases": result['cases'],
-            "cache_id": result['cache_id'],
-            "stats": result['stats']
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"历史测试用例解析失败: {str(e)}")
-
 @app.post("/extract_test_patterns/")
 async def extract_test_patterns(
     standardized_cases: Dict[str, Any] = Body(...),
@@ -1529,7 +1241,7 @@ async def evaluate_coverage(
     patterns_cache_id: str = Form(None)
 ):
     """评估测试观点覆盖率"""
-    try:
+    try:w
         # 获取测试观点
         viewpoints_to_process = None
         if viewpoints:
@@ -1585,58 +1297,30 @@ async def evaluate_coverage(
 
 @app.post("/run_enhanced_workflow_with_history/")
 async def run_enhanced_workflow_with_history(
-    figma_file: UploadFile,
-    viewpoints_file: UploadFile,
-    historical_cases_files: List[UploadFile] = None,
+    figma_access_token: str = Form(...),
+    figma_file_key: str = Form(...),
+    viewpoints_data: Dict[str, Any] = Body(...),
+    historical_cases_data: Dict[str, Any] = Body(None),
     agent_name: str = Form("match_viewpoints"),
     provider: str = Form(None),
     model: str = Form(None),
     temperature: float = Form(None),
     max_tokens: int = Form(None)
 ):
-    """运行带历史测试用例的增强工作流 - 支持多个历史测试用例文件"""
+    """运行带历史测试用例的增强工作流 - 使用API方式获取Figma数据"""
     try:
-        # 读取Figma文件
-        figma_content = await figma_file.read()
-        figma_filename = figma_file.filename
+        # 获取Figma数据
+        figma_result = fetch_figma_data(
+            figma_access_token=figma_access_token,
+            figma_file_key=figma_file_key
+        )
+        figma_data = figma_result["figma_data"]
         
-        # 读取测试观点文件
-        viewpoints_content = await viewpoints_file.read()
-        viewpoints_filename = viewpoints_file.filename
+        # 使用预处理的测试观点数据
+        viewpoints_processed = viewpoints_data
         
-        # 解析文件
-        figma_data = json.loads(figma_content)
-        
-        # 解析测试观点
-        viewpoints_ext = viewpoints_filename.split('.')[-1].lower() if '.' in viewpoints_filename else ''
-        from utils.viewpoints_parser import ViewpointsParser
-        viewpoints = ViewpointsParser.parse_viewpoints(viewpoints_content, viewpoints_ext, viewpoints_filename)
-        
-        # 处理历史测试用例文件
-        historical_cases = {}
-        if historical_cases_files:
-            # 读取所有历史测试用例文件
-            file_contents = []
-            filenames = []
-            file_extensions = []
-            
-            for file in historical_cases_files:
-                file_contents.append(await file.read())
-                filename = file.filename
-                filenames.append(filename)
-                if filename and '.' in filename:
-                    file_extensions.append(filename.split('.')[-1].lower())
-                else:
-                    file_extensions.append(None)
-            
-            # 解析历史测试用例
-            from nodes.process_historical_cases import process_historical_cases
-            historical_result = process_historical_cases(
-                multiple_files=file_contents,
-                file_extensions=file_extensions,
-                filenames=filenames
-            )
-            historical_cases = historical_result['cases']
+        # 使用预处理的历史测试用例数据
+        historical_cases = historical_cases_data
         
         # 创建LLM客户端
         llm_client = SmartLLMClient(
@@ -1651,7 +1335,7 @@ async def run_enhanced_workflow_with_history(
         
         # 运行增强工作流
         from enhanced_workflow import run_enhanced_testcase_generation
-        result = run_enhanced_testcase_generation(figma_data, viewpoints, llm_client, historical_cases)
+        result = run_enhanced_testcase_generation(figma_data, viewpoints_processed, llm_client, historical_cases)
         
         # 保存工作流状态
         StateManager.save_workflow_state(workflow_id, result)
@@ -1665,7 +1349,8 @@ async def run_enhanced_workflow_with_history(
         }
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"运行增强工作流失败: {str(e)}")
+        logging.error(f"运行增强工作流失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"运行增强工作流失败: {str(e)}")
 
 @app.post("/run_node/create_semantic_correlation_map/")
 async def run_node_create_semantic_correlation_map(
@@ -1940,6 +1625,366 @@ async def run_workflow_evaluate_and_optimize(
             "optimization_round": result.get("optimization_round", 0)
         }
     })
+
+@app.post("/api/workflow/start")
+async def start_workflow(
+    data: Dict[str, Any] = Body(...)
+):
+    """
+    统一的工作流入口点，接收Web端预处理后的数据
+    
+    请求体格式:
+    {
+        "figma_data": {
+            "access_token": "...",  // Figma API访问令牌
+            "file_key": "..."       // Figma文件ID
+        },
+        "viewpoints_data": {...},      // 预处理后的测试观点数据
+        "historical_cases": {...},     // 预处理后的历史测试用例数据（可选）
+        "config": {                    // 工作流配置参数
+            "manual_frame_selection": false,
+            "enable_priority_evaluation": true,
+            "enable_classification": true,
+            ...
+        }
+    }
+    """
+    try:
+        # 验证必要字段
+        if "figma_data" not in data:
+            raise HTTPException(status_code=400, detail="缺少Figma数据")
+        if "viewpoints_data" not in data:
+            raise HTTPException(status_code=400, detail="缺少测试观点数据")
+        
+        # 提取数据
+        figma_data_config = data["figma_data"]
+        viewpoints_data = data["viewpoints_data"]
+        historical_cases = data.get("historical_cases", {})
+        config = data.get("config", {})
+        
+        # 验证Figma数据配置
+        if "access_token" not in figma_data_config or "file_key" not in figma_data_config:
+            raise HTTPException(status_code=400, detail="Figma数据配置无效，需要包含access_token和file_key")
+        
+        # 使用Figma API获取数据
+        try:
+            figma_access_token = figma_data_config["access_token"]
+            figma_file_key = figma_data_config["file_key"]
+            
+            # 获取Figma数据
+            figma_result = fetch_figma_data(
+                figma_access_token=figma_access_token,
+                figma_file_key=figma_file_key,
+                extract_frames_only=config.get("manual_frame_selection", False)
+            )
+            
+            # 使用返回的缓存ID
+            figma_cache_id = figma_result["cache_id"]
+        except Exception as e:
+            logging.error(f"获取Figma数据失败: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"获取Figma数据失败: {str(e)}")
+        
+        # 缓存测试观点数据
+        viewpoints_cache_id = cache_node_data(viewpoints_data, "viewpoints_data")
+        
+        # 如果有历史测试用例，缓存它们
+        historical_cases_cache_id = None
+        if historical_cases:
+            historical_cases_cache_id = cache_node_data(historical_cases, "historical_cases")
+        
+        # 创建会话
+        session_id = str(uuid.uuid4())
+        session_data = {
+            "figma_cache_id": figma_cache_id,
+            "viewpoints_cache_id": viewpoints_cache_id,
+            "historical_cases_cache_id": historical_cases_cache_id,
+            "config": config,
+            "status": "initialized",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        # 存储会话数据
+        redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)  # 24小时缓存
+        
+        # 启动异步工作流处理
+        asyncio.create_task(process_workflow(session_id))
+        
+        return {
+            "session_id": session_id,
+            "status": "initialized",
+            "message": "工作流已启动",
+            "cache_ids": {
+                "figma_cache_id": figma_cache_id,
+                "viewpoints_cache_id": viewpoints_cache_id,
+                "historical_cases_cache_id": historical_cases_cache_id
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"启动工作流失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"启动工作流失败: {str(e)}")
+
+@app.get("/api/workflow/status/{session_id}")
+async def get_workflow_status(session_id: str):
+    """获取工作流状态"""
+    try:
+        # 获取会话数据
+        session_data = redis_manager.get_cache(f"session_{session_id}")
+        if not session_data:
+            raise HTTPException(status_code=404, detail=f"会话 {session_id} 不存在")
+        
+        # 提取状态信息
+        status = {
+            "session_id": session_id,
+            "status": session_data.get("status", "unknown"),
+            "progress": session_data.get("progress", 0),
+            "updated_at": session_data.get("updated_at", ""),
+            "created_at": session_data.get("created_at", ""),
+            "error": session_data.get("error", None)
+        }
+        
+        return status
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"获取工作流状态失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取工作流状态失败: {str(e)}")
+
+@app.get("/api/workflow/result/{session_id}")
+async def get_workflow_result(session_id: str):
+    """获取工作流结果"""
+    try:
+        # 获取会话数据
+        session_data = redis_manager.get_cache(f"session_{session_id}")
+        if not session_data:
+            raise HTTPException(status_code=404, detail=f"会话 {session_id} 不存在")
+        
+        # 检查工作流是否完成
+        if session_data.get("status") != "completed":
+            raise HTTPException(status_code=400, detail=f"工作流尚未完成，当前状态: {session_data.get('status', 'unknown')}")
+        
+        # 获取结果
+        result = session_data.get("result", {})
+        if not result:
+            raise HTTPException(status_code=404, detail="工作流结果不存在")
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"获取工作流结果失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取工作流结果失败: {str(e)}")
+
+async def process_workflow(session_id: str):
+    """异步处理工作流"""
+    try:
+        # 获取会话数据
+        session_data = redis_manager.get_cache(f"session_{session_id}")
+        if not session_data:
+            logging.error(f"会话 {session_id} 不存在")
+            return
+        
+        # 更新会话状态
+        session_data["status"] = "processing"
+        session_data["updated_at"] = datetime.now().isoformat()
+        session_data["progress"] = 10
+        redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        
+        # 获取缓存数据
+        figma_data = redis_manager.get_cache(session_data["figma_cache_id"])
+        viewpoints_data = redis_manager.get_cache(session_data["viewpoints_cache_id"])
+        
+        historical_cases = None
+        patterns_result = None
+        if session_data.get("historical_cases_cache_id"):
+            historical_cases = redis_manager.get_cache(session_data["historical_cases_cache_id"])
+        
+        # 执行工作流处理
+        config = session_data.get("config", {})
+        
+        # 处理手动选择Frame的情况
+        if config.get("manual_frame_selection"):
+            # 这里需要等待用户选择Frame
+            # 暂时简化处理，假设不需要手动选择
+            pass
+        
+        # 更新进度
+        session_data["progress"] = 20
+        redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        
+        # 匹配测试观点
+        try:
+            match_result = match_viewpoints(
+                clean_json_cache_id=session_data["figma_cache_id"],
+                viewpoints_processed=viewpoints_data
+            )
+            
+            # 更新进度
+            session_data["progress"] = 40
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        except Exception as e:
+            logging.error(f"匹配测试观点失败: {str(e)}", exc_info=True)
+            raise Exception(f"匹配测试观点失败: {str(e)}")
+        
+        # 推断路由
+        try:
+            route_result = route_infer(
+                clean_json_cache_id=session_data["figma_cache_id"]
+            )
+            
+            # 更新进度
+            session_data["progress"] = 50
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        except Exception as e:
+            logging.error(f"推断路由失败: {str(e)}", exc_info=True)
+            raise Exception(f"推断路由失败: {str(e)}")
+        
+        # 处理历史测试用例
+        if historical_cases:
+            try:
+                # 提取测试模式
+                from nodes.extract_test_patterns import extract_test_patterns
+                patterns_result = extract_test_patterns(historical_cases)
+                
+                # 分析差异
+                from nodes.analyze_differences import analyze_differences
+                diff_result = analyze_differences(
+                    figma_cache_id=session_data["figma_cache_id"],
+                    patterns_cache_id=patterns_result["cache_id"]
+                )
+                
+                # 评估覆盖率
+                from nodes.evaluate_coverage import evaluate_coverage
+                coverage_result = evaluate_coverage(
+                    viewpoints_cache_id=session_data["viewpoints_cache_id"],
+                    difference_cache_id=diff_result["cache_id"],
+                    patterns_cache_id=patterns_result["cache_id"]
+                )
+                
+                # 更新进度
+                session_data["progress"] = 60
+                redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+            except Exception as e:
+                logging.error(f"处理历史测试用例失败: {str(e)}", exc_info=True)
+                # 继续执行，不中断流程
+                patterns_result = None
+        
+        # 创建语义关联映射
+        try:
+            semantic_map_params = {
+                "figma_data_cache_id": session_data["figma_cache_id"],
+                "viewpoints_cache_id": session_data["viewpoints_cache_id"]
+            }
+            
+            # 如果有历史测试模式，添加到参数中
+            if patterns_result and "cache_id" in patterns_result:
+                semantic_map_params["historical_patterns_cache_id"] = patterns_result["cache_id"]
+            
+            semantic_map = create_semantic_correlation_map(**semantic_map_params)
+            
+            # 更新进度
+            session_data["progress"] = 70
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        except Exception as e:
+            logging.error(f"创建语义关联映射失败: {str(e)}", exc_info=True)
+            raise Exception(f"创建语义关联映射失败: {str(e)}")
+        
+        # 生成测试用例
+        try:
+            testcases_result = generate_testcases(
+                semantic_correlation_map_cache_id=semantic_map["cache_id"]
+            )
+            
+            # 更新进度
+            session_data["progress"] = 80
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        except Exception as e:
+            logging.error(f"生成测试用例失败: {str(e)}", exc_info=True)
+            raise Exception(f"生成测试用例失败: {str(e)}")
+        
+        # 生成跨页面测试用例
+        try:
+            cross_page_result = generate_cross_page_case(
+                routes_cache_id=route_result["cache_id"],
+                testcases_cache_id=testcases_result["cache_id"]
+            )
+            
+            # 更新进度
+            session_data["progress"] = 90
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        except Exception as e:
+            logging.error(f"生成跨页面测试用例失败: {str(e)}", exc_info=True)
+            raise Exception(f"生成跨页面测试用例失败: {str(e)}")
+        
+        # 格式化输出
+        try:
+            # 创建一个虚拟的UploadFile对象
+            class MockUploadFile(UploadFile):
+                async def read(self):
+                    return json.dumps(redis_manager.get_cache(cross_page_result["cache_id"])).encode('utf-8')
+            
+            mock_file = MockUploadFile(
+                filename="testcases.json",
+                file=None,
+                content_type="application/json"
+            )
+            
+            output_result = await run_node_format_output(
+                testcases=mock_file,
+                output_format='markdown',
+                language='ja'
+            )
+            
+            formatted_output = output_result.get("content", {}).get("formatted_output", "")
+            
+            # 更新会话状态
+            session_data["status"] = "completed"
+            session_data["updated_at"] = datetime.now().isoformat()
+            session_data["progress"] = 100
+            session_data["result"] = {
+                "testcases": testcases_result.get("content", {}),
+                "cross_page_cases": cross_page_result.get("content", {}),
+                "formatted_output": formatted_output
+            }
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+            
+            return session_data["result"]
+        except Exception as e:
+            logging.error(f"格式化输出失败: {str(e)}", exc_info=True)
+            raise Exception(f"格式化输出失败: {str(e)}")
+    
+    except Exception as e:
+        logging.error(f"处理工作流失败: {str(e)}", exc_info=True)
+        session_data = redis_manager.get_cache(f"session_{session_id}")
+        if session_data:
+            session_data["status"] = "failed"
+            session_data["error"] = str(e)
+            session_data["updated_at"] = datetime.now().isoformat()
+            redis_manager.set_cache(f"session_{session_id}", session_data, ttl=86400)
+        return None
+
+# 添加辅助函数
+def save_temp_upload(upload_file: UploadFile) -> str:
+    """将上传的文件保存到临时目录"""
+    temp_file = tempfile.NamedTemporaryFile(delete=False)
+    try:
+        shutil.copyfileobj(upload_file.file, temp_file)
+    finally:
+        upload_file.file.seek(0)  # 重置文件指针
+        temp_file.close()
+    return temp_file.name
+
+# 添加缓存节点数据的函数
+def cache_node_data(data: Any, prefix: str = "node_data") -> str:
+    """缓存节点数据并返回缓存ID"""
+    # 生成唯一缓存ID
+    cache_id = f"{prefix}_{uuid.uuid4().hex}"
+    
+    # 将数据缓存到Redis
+    redis_manager.set_cache(cache_id, data, ttl=3600)  # 1小时过期
+    
+    return cache_id
 
 if __name__ == "__main__":
     import uvicorn
