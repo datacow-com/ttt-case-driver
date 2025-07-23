@@ -2,6 +2,149 @@
 
 ## System Overview
 
+```mermaid
+graph TB
+    %% 主要系统组件
+    subgraph "Web应用"
+        WebUI["Web前端界面"]
+        FileProcessor["文件处理器"]
+        DataNormalizer["数据标准化模块"]
+        APIClient["API客户端"]
+        ResultViewer["结果查看器"]
+    end
+    
+    subgraph "Dify平台"
+        DifyAPI["Dify REST API"]
+        WorkflowEngine["工作流引擎"]
+        NodeManager["节点管理器"]
+        SimplePrompt["基础提示管理"]
+        StateTracker["状态跟踪器"]
+    end
+    
+    subgraph "LangGraph系统"
+        LangGraphAPI["LangGraph API"]
+        
+        subgraph "分析代理"
+            AnalyzeViewpoints["分析测试视角"]
+            DeepAnalysis["深度理解与缺口分析"]
+            AnalyzeDiff["分析差异"]
+        end
+        
+        subgraph "映射代理"
+            MapFigma["映射Figma到视角"]
+            MapChecklist["映射清单到Figma区域"]
+            CreateSemantic["创建语义关联映射"]
+        end
+        
+        subgraph "生成代理"
+            GenTestcases["生成测试用例"]
+            GenFinal["生成最终测试用例"]
+            GenCrossPage["生成跨页面用例"]
+        end
+        
+        subgraph "质量优化代理"
+            EvalQuality["评估测试用例质量"]
+            OptimizeTests["优化测试用例"]
+            EvalCoverage["评估覆盖率"]
+        end
+        
+        subgraph "历史分析代理"
+            ProcessHistory["处理历史用例"]
+            ExtractPatterns["提取测试模式"]
+        end
+        
+        subgraph "支持系统"
+            CacheSystem["多层缓存系统"]
+            StateManager["状态管理器"]
+            RedisStore["Redis存储"]
+        end
+    end
+    
+    %% 外部系统
+    FigmaAPI["Figma API"]
+    LLMProviders["LLM提供商\n(OpenAI, Anthropic, Google)"]
+    CI["CI/CD系统"]
+    
+    %% 数据流
+    %% Web应用内部流
+    WebUI --> FileProcessor
+    FileProcessor --> DataNormalizer
+    DataNormalizer --> APIClient
+    APIClient --> ResultViewer
+    
+    %% Web应用到Dify
+    APIClient -->|"标准化数据\n(JSON)"| DifyAPI
+    
+    %% Dify内部流
+    DifyAPI --> WorkflowEngine
+    WorkflowEngine --> NodeManager
+    NodeManager --> SimplePrompt
+    WorkflowEngine --> StateTracker
+    
+    %% Dify到LangGraph
+    NodeManager -->|"工作流指令\n预处理数据"| LangGraphAPI
+    
+    %% LangGraph内部流
+    LangGraphAPI --> AnalyzeViewpoints
+    LangGraphAPI --> MapFigma
+    LangGraphAPI --> GenTestcases
+    LangGraphAPI --> EvalQuality
+    LangGraphAPI --> ProcessHistory
+    
+    %% 代理间的数据流
+    AnalyzeViewpoints --> MapFigma
+    MapFigma --> CreateSemantic
+    CreateSemantic --> MapChecklist
+    MapChecklist --> DeepAnalysis
+    DeepAnalysis --> GenFinal
+    GenFinal --> EvalQuality
+    EvalQuality -->|"质量不足"| OptimizeTests
+    OptimizeTests --> EvalQuality
+    ProcessHistory --> ExtractPatterns
+    ExtractPatterns --> AnalyzeDiff
+    AnalyzeDiff --> EvalCoverage
+    EvalCoverage --> DeepAnalysis
+    GenFinal --> GenCrossPage
+    
+    %% 支持系统集成
+    AnalyzeViewpoints -.-> CacheSystem
+    MapFigma -.-> CacheSystem
+    GenTestcases -.-> CacheSystem
+    EvalQuality -.-> CacheSystem
+    
+    AnalyzeViewpoints -.-> StateManager
+    MapFigma -.-> StateManager
+    GenTestcases -.-> StateManager
+    EvalQuality -.-> StateManager
+    
+    StateManager -.-> RedisStore
+    CacheSystem -.-> RedisStore
+    
+    %% LangGraph到Dify
+    LangGraphAPI -->|"处理结果\n质量评估\n状态更新"| StateTracker
+    
+    %% Dify到Web应用
+    DifyAPI -->|"最终结果\n处理状态\n质量摘要"| APIClient
+    
+    %% 外部系统集成
+    FileProcessor -->|"获取设计数据"| FigmaAPI
+    LangGraphAPI -->|"LLM调用"| LLMProviders
+    SimplePrompt -->|"简单LLM调用"| LLMProviders
+    ResultViewer -->|"导出测试用例"| CI
+    
+    %% 样式
+    classDef webApp fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef dify fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef langGraph fill:#bfb,stroke:#333,stroke-width:2px;
+    classDef external fill:#ddd,stroke:#333,stroke-width:1px;
+    
+    class WebUI,FileProcessor,DataNormalizer,APIClient,ResultViewer webApp;
+    class DifyAPI,WorkflowEngine,NodeManager,SimplePrompt,StateTracker dify;
+    class LangGraphAPI,AnalyzeViewpoints,DeepAnalysis,AnalyzeDiff,MapFigma,MapChecklist,CreateSemantic,GenTestcases,GenFinal,GenCrossPage,EvalQuality,OptimizeTests,EvalCoverage,ProcessHistory,ExtractPatterns,CacheSystem,StateManager,RedisStore langGraph;
+    class FigmaAPI,LLMProviders,CI external;
+
+```
+
 LangGraph Workflow is an advanced agent-based system for generating high-quality, structured test cases from Figma design files. The system leverages a directed acyclic graph (DAG) of specialized LLM agents, each responsible for a specific step in the test case generation and optimization process. It integrates multiple LLM providers (OpenAI, Anthropic, Google Gemini) and implements a feedback-driven optimization loop to ensure test case quality and coverage.
 
 **Core Capabilities:**
